@@ -1040,16 +1040,16 @@ function BestPathTab({ buffKey }) {
             ores.map(o=>React.createElement('option',{key:o,value:o},o))
           )
         ),
+        React.createElement('div',{className:'rs-field',style:{flex:1.5}},
+          React.createElement('span',{className:'rs-label'},`Amount of ${ore}`),
+          React.createElement('input',{type:"text",placeholder:"e.g. 10000",value:amount,
+            onChange:e=>setAmount(e.target.value),onKeyDown:e=>e.key==="Enter"&&calculate()})
+        ),
         React.createElement('div',{className:'rs-field',style:{flex:2}},
           React.createElement('span',{className:'rs-label'},"Target Material"),
           React.createElement('select',{value:target,onChange:e=>setTarget(e.target.value)},
             allTargets.map(t=>React.createElement('option',{key:t,value:t},t))
           )
-        ),
-        React.createElement('div',{className:'rs-field',style:{flex:1.5}},
-          React.createElement('span',{className:'rs-label'},"Amount"),
-          React.createElement('input',{type:"text",placeholder:"e.g. 10000",value:amount,
-            onChange:e=>setAmount(e.target.value),onKeyDown:e=>e.key==="Enter"&&calculate()})
         ),
         React.createElement('button',{className:'rs-btn',onClick:calculate},"Find Paths")
       ),
