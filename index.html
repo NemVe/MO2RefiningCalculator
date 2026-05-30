@@ -149,6 +149,22 @@
   .bp-step-detail { font-size: 12px; color: var(--text2); }
   .bp-arrow { text-align: center; color: var(--text3); font-size: 12px; margin-bottom: 6px; }
   .bp-final { background: #1a2e1f; border: 1px solid var(--green); border-radius: var(--r-md); padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+  .bp-byproducts {
+    margin-top: 8px;
+    background: var(--bg2);
+    border: 0.5px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 10px 12px;
+  }
+  .bp-byproducts-title {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--text3); margin-bottom: 7px;
+  }
+  .bp-byproduct-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 3px 0; border-bottom: 0.5px solid var(--border); font-size: 12px;
+  }
+  .bp-byproduct-row:last-child { border-bottom: none; }
   .no-path { text-align: center; padding: 24px; font-size: 13px; color: var(--text3); }
   .path-options { display: flex; flex-direction: column; gap: 10px; }
   .path-option-btn {
@@ -735,8 +751,51 @@ function BestPathTab({ buffKey }) {
     const graph = buildForwardGraph(allowDangerous);
     const found = findAllPaths(ore, target, graph);
     if (found.length===0) { setPaths([]); return; }
-    const scored = found.map((p,i)=>({ path:p, yield: pathYield(p,qty,mult), idx:i }))
-      .sort((a,b)=>b.yield-a.yield);
+
+    const scored = found.map((p,i)=>{
+      // Compute byproducts: at each step, look up all outputs of that recipe.
+      // The "main" output is edge.to; everything else from that same recipe is a byproduct.
+      const byproducts = {}; // name -> qty
+      let runningQty = qty;
+      p.forEach(edge => {
+        const mainQty = runningQty * (edge.ratio / 10000) * mult;
+        // Find the full recipe this edge came from
+        const recipeList = RECIPES[ore] ? null : null; // we need to look up the source
+        // Look in RECIPES (top-level ore) and SUB_RECIPES for this edge's from-node
+        // edge doesn't store the "from" node, so we reconstruct from path index
+        // Instead, look up all outputs of the machine+material combo
+        const allOutputs = (() => {
+          // find which recipe set contains this edge
+          for (const [src, recs] of Object.entries(RECIPES)) {
+            for (const r of recs) {
+              if (r.machine === edge.machine && r.catalyst === edge.catalyst && r.outputs[edge.to] === edge.ratio) {
+                return Object.entries(r.outputs);
+              }
+            }
+          }
+          for (const [src, recs] of Object.entries(SUB_RECIPES)) {
+            for (const r of recs) {
+              if (r.machine === edge.machine && r.catalyst === edge.catalyst && r.outputs[edge.to] === edge.ratio) {
+                return Object.entries(r.outputs);
+              }
+            }
+          }
+          return [];
+        })();
+
+        // The input qty for this step is runningQty; each output scales by its own ratio
+        allOutputs.forEach(([prod, prodRatio]) => {
+          if (prod === edge.to) return; // main output, skip
+          const bpQty = runningQty * (prodRatio / 10000) * mult;
+          byproducts[prod] = (byproducts[prod] || 0) + bpQty;
+        });
+
+        runningQty = mainQty;
+      });
+
+      return { path:p, yield: pathYield(p,qty,mult), byproducts, idx:i };
+    }).sort((a,b)=>b.yield-a.yield);
+
     setPaths(scored);
     setSelectedPath(0);
   }
@@ -840,7 +899,22 @@ function BestPathTab({ buffKey }) {
           ),
           React.createElement('span',{className:'badge badge-green',style:{fontSize:15,padding:"4px 14px"}},
             fmt(paths[selectedPath].yield)+" units")
-        )
+        ),
+        // Byproducts panel
+        (() => {
+          const bp = paths[selectedPath].byproducts;
+          const entries = Object.entries(bp).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+          if (entries.length === 0) return null;
+          return React.createElement('div',{className:'bp-byproducts'},
+            React.createElement('div',{className:'bp-byproducts-title'},"🧪 Byproducts along this path"),
+            entries.map(([name, qty])=>
+              React.createElement('div',{key:name,className:'bp-byproduct-row'},
+                React.createElement('span',{style:{color:"var(--text2)"}},name),
+                React.createElement('span',{className:'badge badge-blue'},fmt(qty))
+              )
+            )
+          );
+        })()
       )
     )
   );
