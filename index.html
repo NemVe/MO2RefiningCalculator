@@ -202,6 +202,8 @@ const { useState, useContext, createContext, useCallback } = React;
 const BuffContext = createContext(1);
 const DangerContext = createContext(true); // true = has access to dangerous machines
 const DANGEROUS_MACHINES = new Set(["Blast Furnace", "Greater Nat"]);
+// Materials available for direct purchase from in-game vendors — skip extraction entirely
+const VENDOR_MATERIALS = new Set(["Calamine"]);
 
 // ═══════════════════════════════════════════════════════
 //  DATA
@@ -590,11 +592,17 @@ function ReverseSearchTab({ buffKey }) {
 
     // ── Phase B: Collect raw extractable leaf materials ──────────────────
     // rawNeeds: { materialName -> totalNeeded }
+    // vendorNeeds: { materialName -> totalNeeded } (buy from vendor, skip extraction)
     const rawNeeds = {};
+    const vendorNeeds = {};
     refiningSteps.forEach(step => {
       step.ingredients.forEach(({ name, needed }) => {
         if (!REFINING_RECIPES[name]) {
-          rawNeeds[name] = (rawNeeds[name] || 0) + needed;
+          if (VENDOR_MATERIALS.has(name)) {
+            vendorNeeds[name] = (vendorNeeds[name] || 0) + needed;
+          } else {
+            rawNeeds[name] = (rawNeeds[name] || 0) + needed;
+          }
         }
       });
     });
@@ -693,7 +701,7 @@ function ReverseSearchTab({ buffKey }) {
       });
     }
 
-    setResult({ alloy, qty, sortedMining, orderedExtr, refiningSteps, hiddenWarnings });
+    setResult({ alloy, qty, sortedMining, orderedExtr, refiningSteps, hiddenWarnings, vendorNeeds });
   }
 
   const STEP_COLORS = ["var(--green)","var(--blue)","var(--purple)","var(--gold)"];
@@ -775,6 +783,24 @@ function ReverseSearchTab({ buffKey }) {
                 React.createElement('span',{className:'badge badge-gold'},fmt(info.oreNeeded)+" units"),
                 React.createElement('span',{className:'badge badge-blue'},fmt(info.stacks)+" stacks")
               )
+            )
+          )
+        ),
+
+        // ── VENDOR MATERIALS: buy from vendor, no mining needed ──────────
+        result.vendorNeeds && Object.keys(result.vendorNeeds).length > 0 &&
+        React.createElement('div',{style:{marginBottom:18}},
+          React.createElement('div',{className:'rs-section-title',style:{color:"var(--purple)",fontSize:12,marginBottom:10}},
+            "🛒 VENDOR MATERIALS  (purchase from in-game vendors — no mining needed)"),
+          Object.entries(result.vendorNeeds).map(([mat, needed], i) =>
+            React.createElement('div',{key:mat,style:{
+              display:"flex", justifyContent:"space-between", alignItems:"center",
+              background:"var(--bg1)", border:"0.5px solid var(--border)",
+              borderRadius:"var(--r-md)", padding:"12px 16px", marginBottom:6,
+              borderLeft:"3px solid var(--purple)"
+            }},
+              React.createElement('span',{style:{fontSize:14,fontWeight:600,color:"var(--text1)"}},`🛒 Buy ${mat}`),
+              React.createElement('span',{className:'badge badge-purple'},fmt(needed)+" units")
             )
           )
         ),
