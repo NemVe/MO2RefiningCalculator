@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mortal Online 2 — Extraction Chain Calculator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<style>
+  :root {
+    --color-background-primary: #1a1c22;
+    --color-background-secondary: #12141a;
+    --color-background-info: #1a2a3a;
+    --color-border-tertiary: #2e3140;
+    --color-text-primary: #e8eaf0;
+    --color-text-secondary: #8891a8;
+    --color-text-tertiary: #4e5570;
+    --color-text-info: #5ba8f5;
+    --border-radius-lg: 10px;
+    --border-radius-md: 6px;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0d0f14;
+    color: var(--color-text-primary);
+    min-height: 100vh;
+    padding: 24px 16px;
+  }
+
+  input, select {
+    background: var(--color-background-secondary);
+    border: 1px solid var(--color-border-tertiary);
+    color: var(--color-text-primary);
+    border-radius: var(--border-radius-md);
+    padding: 7px 10px;
+    font-size: 13px;
+    outline: none;
+    width: 100%;
+  }
+  input:focus, select:focus { border-color: #378ADD66; }
+  select option { background: #1a1c22; }
+  button { font-family: inherit; }
+
+  .buff-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 13px;
+    border-radius: 20px;
+    border: 1px solid var(--color-border-tertiary);
+    background: var(--color-background-secondary);
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+  }
+  .buff-toggle:hover {
+    border-color: #378ADD55;
+    color: var(--color-text-primary);
+  }
+  .buff-toggle.active-cm {
+    background: #1a2e1f;
+    border-color: #1D9E75;
+    color: #1D9E75;
+  }
+  .buff-toggle.active-cmo {
+    background: #1e2538;
+    border-color: #378ADD;
+    color: #378ADD;
+  }
+  .buff-toggle .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.7;
+  }
+  .buff-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 10px 14px;
+    background: var(--color-background-secondary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg);
+    margin-bottom: 18px;
+  }
+  .buff-label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--color-text-tertiary);
+    margin-right: 2px;
+  }
+  .buff-active-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+    margin-left: auto;
+  }
+  .buff-active-badge.cm  { background: #1a2e1f; color: #1D9E75; }
+  .buff-active-badge.cmo { background: #1e2538; color: #378ADD; }
+  .buff-active-badge.none { background: transparent; color: var(--color-text-tertiary); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const { useState, useContext, createContext } = React;
+
+// ── Buff Context ────────────────────────────────────────────────────────────
+// multiplier: 1 = no buff, 1.0845 = Clade+Mastery, 1.1345 = Clade+Mastery+Outpost
+const BuffContext = createContext(1);
+
+// ── Recipe Data ─────────────────────────────────────────────────────────────
+const RECIPES = {
+  Granum: [
+    { catalyst: "None", machine: "Crusher", outputs: { Amarantum: 882, "Blood Ore": 770, Flakestone: 140, "Granum Powder": 2940 } },
+    { catalyst: "Calx Powder (715)", machine: "Attractor", outputs: { "Blood Ore": 1980 } },
+  ],
+  Calx: [
+    { catalyst: "None", machine: "Crusher", outputs: { Calspar: 360, Malachite: 891, Flakestone: 180, Coal: 2151, "Calx Powder": 1361 } },
+    { catalyst: "Water (1000)", machine: "Grinder", outputs: { Calspar: 2000, Malachite: 528, Flakestone: 36, Coal: 1140, "Calx Powder": 2058 } },
+    { catalyst: "Water (1000)", machine: "Furnace", outputs: { Calspar: 2560, Malachite: 506, Flakestone: 28 } },
+  ],
+  Saburra: [
+    { catalyst: "None", machine: "Crusher", outputs: { Bleckblende: 1584, Malachite: 1584, Jadeite: 128, Pyrite: 32, "Saburra Powder": 2000 } },
+    { catalyst: "Water (1000)", machine: "Grinder", outputs: { Bleckblende: 1901, Malachite: 950, Jadeite: 16, "Saburra Powder": 4275 } },
+    { catalyst: "Coal (535)", machine: "Attractor", outputs: { Pyrite: 120 } },
+  ],
+  Tephra: [
+    { catalyst: "None", machine: "Crusher", outputs: { Galbinum: 1200, Cinnabar: 144, Magmum: 288, "Red Bleckblende": 312, "Volcanic Ash": 2220 } },
+    { catalyst: "Bor (720)", machine: "Grinder", outputs: { Galbinum: 1200, Cinnabar: 90, Magmum: 259, "Red Bleckblende": 807, "Volcanic Ash": 2753 } },
+    { catalyst: "Water (1000)", machine: "Grinder", outputs: { Galbinum: 1900, Cinnabar: 88, Magmum: 259, "Red Bleckblende": 774, "Volcanic Ash": 2960 } },
+    { catalyst: "Calx Powder (715)", machine: "Greater Nat", outputs: { Galbinum: 250, Cinnabar: 36, Magmum: 122, "Red Bleckblende": 2600, "Volcanic Ash": 148 } },
+    { catalyst: "Bor (720)", machine: "Greater Nat", outputs: { Galbinum: 1250, Cinnabar: 94, Magmum: 36, "Red Bleckblende": 1976, "Volcanic Ash": 326 } },
+    { catalyst: "Calx Powder (715)", machine: "Furnace", outputs: { Galbinum: 299, Cinnabar: 54, Magmum: 259, "Red Bleckblende": 2080, "Volcanic Ash": 444 } },
+  ],
+  Gabore: [
+    { catalyst: "None", machine: "Crusher", outputs: { Galbinum: 750, "Blood Ore": 510, Nyx: 36, "Gabore Powder": 2340 } },
+    { catalyst: "Bor (720)", machine: "Grinder", outputs: { Galbinum: 1050, "Blood Ore": 226, "Gabore Powder": 4168 } },
+    { catalyst: "Coke (385)", machine: "Furnace", outputs: { Galbinum: 243, "Blood Ore": 595, Nyx: 168 } },
+  ],
+  Kimurite: [
+    { catalyst: "None", machine: "Crusher", outputs: { Waterstone: 3800, Magmum: 3520, Pyrite: 200 } },
+  ],
+};
+
+const SUB_RECIPES = {
+  "Blood Ore": [
+    { catalyst: "Coke (385)", machine: "Furnace", outputs: { "Pig Iron": 4000 } },
+    { catalyst: "Coke (385)", machine: "Blast Furnace", outputs: { "Pig Iron": 5000 } },
+    { catalyst: "Glimmer Powder (715)", machine: "Blast Furnace", outputs: { "Pig Iron": 5900 } },
+  ],
+  Amarantum: [
+    { catalyst: "None", machine: "Crusher", outputs: { Waterstone: 900, Electrum: 180, Cuprum: 270, Bleck: 135, Calamine: 90 } },
+    { catalyst: "Bor (720)", machine: "Furnace", outputs: { Electrum: 480, Cuprum: 2400, Bleck: 960, Calamine: 563 } },
+    { catalyst: "Bor (720)", machine: "Blast Furnace", outputs: { Electrum: 800, Cuprum: 3000, Bleck: 600, Calamine: 624 } },
+  ],
+  Calspar: [
+    { catalyst: "Dragon Salt (190)", machine: "Furnace", outputs: { "Chalk Glance": 245, Electrum: 88, Malachite: 1445 } },
+    { catalyst: "Ichor (660)", machine: "Furnace", outputs: { "Chalk Glance": 159, Electrum: 212, Malachite: 2793 } },
+    { catalyst: "Sulfur (560)", machine: "Furnace", outputs: { "Chalk Glance": 142, Electrum: 129, Malachite: 1782 } },
+    { catalyst: "Water (1000)", machine: "Furnace", outputs: { "Chalk Glance": 72, Electrum: 109, Malachite: 3468 } },
+    { catalyst: "Bor (720)", machine: "Furnace", outputs: { "Chalk Glance": 72, Electrum: 294, Malachite: 4816 } },
+    { catalyst: "Coke (385)", machine: "Furnace", outputs: { "Chalk Glance": 72, Electrum: 212, Malachite: 3468 } },
+    { catalyst: "Dragon Salt (190)", machine: "Blast Furnace", outputs: { "Chalk Glance": 700, Electrum: 224, Malachite: 2064 } },
+    { catalyst: "Ichor (660)", machine: "Blast Furnace", outputs: { "Chalk Glance": 490, Electrum: 426, Malachite: 3302 } },
+    { catalyst: "Sulfur (560)", machine: "Blast Furnace", outputs: { "Chalk Glance": 291, Electrum: 291, Malachite: 2374 } },
+    { catalyst: "Dragon Salt (190)", machine: "Fabricula", outputs: { "Chalk Glance": 420 } },
+    { catalyst: "Ichor (660)", machine: "Fabricula", outputs: { "Chalk Glance": 210, Electrum: 336, Malachite: 1376 } },
+    { catalyst: "Sulfur (560)", machine: "Fabricula", outputs: { "Chalk Glance": 168, Electrum: 112, Malachite: 344 } },
+    { catalyst: "Bor (720)", machine: "Fabricula", outputs: { Electrum: 560, Malachite: 3440 } },
+  ],
+  Malachite: [
+    { catalyst: "Bor (720)", machine: "Furnace", outputs: { Cuprum: 4000, Sulfur: 47 } },
+    { catalyst: "Coke (385)", machine: "Furnace", outputs: { Cuprum: 4000, Sulfur: 83 } },
+    { catalyst: "Glimmer Powder (715)", machine: "Furnace", outputs: { Cuprum: 5000 } },
+    { catalyst: "Bor (720)", machine: "Blast Furnace", outputs: { Cuprum: 5000 } },
+    { catalyst: "Bor (720)", machine: "Fabricula", outputs: { Cuprum: 4000, Sulfur: 64 } },
+    { catalyst: "Coke (385)", machine: "Fabricula", outputs: { Cuprum: 4000, Sulfur: 320 } },
+    { catalyst: "Coal (535)", machine: "Fabricula", outputs: { Cuprum: 2400, Sulfur: 640 } },
+  ],
+  Bleckblende: [
+    { catalyst: "Bor (720)", machine: "Natorus", outputs: { Bleck: 5400 } },
+    { catalyst: "Rock Oil (420)", machine: "Natorus", outputs: { Bleck: 5400 } },
+    { catalyst: "Bor (720)", machine: "Greater Nat", outputs: { Bleck: 6000 } },
+    { catalyst: "Bor (720)", machine: "Furnace", outputs: { Bleck: 1920 } },
+  ],
+  Cinnabar: [
+    { catalyst: "Bor (720)", machine: "Furnace", outputs: { Ichor: 3900, Sulfur: 296 } },
+    { catalyst: "Bor (720)", machine: "Greater Nat", outputs: { Sulfur: 672 } },
+    { catalyst: "Bor (720)", machine: "Fabricula", outputs: { Ichor: 960, Sulfur: 160 } },
+  ],
+  Coal: [
+    { catalyst: "Coal (535)", machine: "Furnace", outputs: { Coke: 7200 } },
+    { catalyst: "Calx Powder (715)", machine: "Furnace", outputs: { Coke: 7200 } },
+  ],
+  Magmum: [
+    { catalyst: "None", machine: "Grizzly", outputs: { Kyanite: 2500, Maalite: 650, Pyropite: 200 } },
+    { catalyst: "Bor (720)", machine: "Kiln", outputs: { Maalite: 2080, Pyropite: 480 } },
+    { catalyst: "Coke (385)", machine: "Kiln", outputs: { Maalite: 4264, Pyropite: 221 } },
+    { catalyst: "Bor (720)", machine: "Hearth", outputs: { Maalite: 780, Pyropite: 600 } },
+  ],
+  Galbinum: [
+    { catalyst: "Calx Powder (715)", machine: "Furnace", outputs: { Lupium: 171, Pyrite: 37, Pyroxene: 696 } },
+    { catalyst: "Calx Powder (715)", machine: "Blast Furnace", outputs: { Lupium: 315, Pyroxene: 1280 } },
+    { catalyst: "Coke (385)", machine: "Blast Furnace", outputs: { Lupium: 246, Pyroxene: 1760 } },
+    { catalyst: "Bor (720)", machine: "Blast Furnace", outputs: { Lupium: 246, Pyroxene: 1400 } },
+    { catalyst: "Coke", machine: "Greater Nat", outputs: { Lupium: 62, Pyrite: 653, Pyroxene: 4200 } },
+  ],
+  "Red Bleckblende": [
+    { catalyst: "Coke (385)", machine: "Furnace", outputs: { Aabam: 2322, Silver: 198, Sanguinite: 23, Calamine: 569 } },
+    { catalyst: "Rock Oil (420)", machine: "Blast Furnace", outputs: { Aabam: 3000, Silver: 200, Sanguinite: 140, Calamine: 240 } },
+    { catalyst: "Fuming Salt (315)", machine: "Blast Furnace", outputs: { Aabam: 3000, Silver: 350, Sanguinite: 200, Calamine: 456 } },
+  ],
+  Waterstone: [
+    { catalyst: "Rock Oil (420)", machine: "Fabricula", outputs: { "Gem Metal": 3200 } },
+    { catalyst: "Bor (720)", machine: "Fabricula", outputs: { "Gem Metal": 1920, Lupium: 960 } },
+    { catalyst: "Fuming Salt (315)", machine: "Fabricula", outputs: { "Gem Metal": 640, Lupium: 2400 } },
+    { catalyst: "Fuming Salt (315)", machine: "Blast Furnace", outputs: { "Gem Metal": 1248, Lupium: 3200 } },
+    { catalyst: "Bor (720)", machine: "Blast Furnace", outputs: { "Gem Metal": 1824, Lupium: 2048 } },
+  ],
+  Electrum: [
+    { catalyst: "Calx Powder (715)", machine: "Furnace", outputs: { Cuprum: 2600, Silver: 1600, Gold: 1400 } },
+    { catalyst: "Calx Powder (715)", machine: "Blast Furnace", outputs: { Cuprum: 3500, Silver: 2500, Gold: 1750 } },
+  ],
+  "Chalk Glance": [
+    { catalyst: "Dragon Salt (190)", machine: "Fabricula", outputs: { Skadite: 3200 } },
+    { catalyst: "Ichor (660)", machine: "Fabricula", outputs: { Skadite: 3200 } },
+  ],
+  Pyroxene: [
+    { catalyst: "Calx Powder (715)", machine: "Blast Furnace", outputs: { Almine: 400, Acronite: 800, Electrum: 2720, Calamine: 2040 } },
+    { catalyst: "Calx Powder (715)", machine: "Greater Nat", outputs: { Almine: 2000, Acronite: 160, Electrum: 2720, Calamine: 3400 } },
+  ],
+  Azurite: [
+    { catalyst: "Fuming Salt (315)", machine: "Fabricula", outputs: { Cuprite: 300 } },
+  ],
+};
+
+const fmt = (n) => Math.round(n).toLocaleString();
+
+const MACHINE_ICONS = {
+  Crusher: "⚙", Grinder: "🔩", Furnace: "🔥", "Blast Furnace": "♨",
+  Attractor: "🧲", "Greater Nat": "🌀", Natorus: "⚗", Fabricula: "🏭",
+  Grizzly: "🪨", Kiln: "🏺", Hearth: "🪵",
+};
+
+const TIER_STYLE = [
+  { bg: "var(--color-background-secondary)", accent: "#1D9E75" },
+  { bg: "var(--color-background-primary)", accent: "#378ADD" },
+  { bg: "var(--color-background-secondary)", accent: "#7F77DD" },
+];
+
+// ── Buff toggle bar ──────────────────────────────────────────────────────────
+function BuffBar({ buffKey, setBuffKey }) {
+  const BUFFS = [
+    { key: "none", label: "No Buff", pct: null, cls: "" },
+    { key: "cm",   label: "Clade + Mastery", pct: "+8.45%", cls: "active-cm" },
+    { key: "cmo",  label: "Clade + Mastery + Outpost", pct: "+13.45%", cls: "active-cmo" },
+  ];
+
+  const active = BUFFS.find(b => b.key === buffKey);
+
+  return React.createElement('div', { className: 'buff-bar' },
+    React.createElement('span', { className: 'buff-label' }, "⚡ Buff"),
+    BUFFS.map(b =>
+      React.createElement('button', {
+        key: b.key,
+        className: `buff-toggle${buffKey === b.key ? ' ' + b.cls : ''}`,
+        onClick: () => setBuffKey(b.key),
+      },
+        buffKey === b.key && React.createElement('span', { className: 'dot' }),
+        b.label,
+        b.pct && React.createElement('span', {
+          style: { opacity: 0.75, fontSize: 11 }
+        }, ` ${b.pct}`)
+      )
+    ),
+    buffKey !== "none" && React.createElement('span', {
+      className: `buff-active-badge ${buffKey}`
+    }, active.pct + " yield")
+  );
+}
+
+// ── Sub-recipe expander ──────────────────────────────────────────────────────
+function RecipeSelect({ material, qty, depth }) {
+  const mult = useContext(BuffContext);
+  const recipes = SUB_RECIPES[material];
+  const [open, setOpen] = useState(false);
+  const [recipeIdx, setRecipeIdx] = useState(0);
+
+  if (!recipes || qty <= 0) return null;
+
+  const recipe = recipes[recipeIdx];
+  const ts = TIER_STYLE[Math.min(depth, 2)];
+
+  return React.createElement('div', {
+    style: {
+      marginTop: 6,
+      marginLeft: depth === 0 ? 0 : 16,
+      borderLeft: `2px solid ${ts.accent}22`,
+      paddingLeft: 12,
+    }
+  },
+    React.createElement('button', {
+      onClick: () => setOpen(o => !o),
+      style: {
+        display: "flex", alignItems: "center", gap: 8,
+        background: "none", border: "none", cursor: "pointer",
+        padding: "4px 0", width: "100%",
+      }
+    },
+      React.createElement('span', {
+        style: { fontSize: 11, fontWeight: 500, color: ts.accent, textTransform: "uppercase", letterSpacing: "0.06em" }
+      }, `${open ? "▾" : "▸"} ${material} → process`)
+    ),
+
+    open && React.createElement('div', {
+      style: {
+        background: ts.bg,
+        border: `0.5px solid var(--color-border-tertiary)`,
+        borderRadius: "var(--border-radius-md)",
+        padding: "10px 12px", marginTop: 4,
+      }
+    },
+      React.createElement('div', { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10 } },
+        React.createElement('span', { style: { fontSize: 12, color: "var(--color-text-secondary)", whiteSpace: "nowrap" } }, "Machine"),
+        React.createElement('select', {
+          value: recipeIdx,
+          onChange: e => setRecipeIdx(Number(e.target.value)),
+          style: { fontSize: 12, flex: 1, minWidth: 0 }
+        },
+          recipes.map((r, i) =>
+            React.createElement('option', { key: i, value: i },
+              `${MACHINE_ICONS[r.machine] || "⚙"} ${r.machine} — ${r.catalyst}`)
+          )
+        )
+      ),
+      Object.entries(recipe.outputs).map(([prod, ratio]) => {
+        // Each refining step gets the buff applied to its output
+        const outQty = qty * (ratio / 10000) * mult;
+        return React.createElement('div', { key: prod },
+          React.createElement('div', {
+            style: {
+              display: "flex", justifyContent: "space-between",
+              alignItems: "center", padding: "4px 0",
+              borderBottom: "0.5px solid var(--color-border-tertiary)",
+            }
+          },
+            React.createElement('span', { style: { fontSize: 13, color: "var(--color-text-primary)" } }, prod),
+            React.createElement('span', {
+              style: { fontSize: 13, fontWeight: 500, color: ts.accent, fontVariantNumeric: "tabular-nums" }
+            }, fmt(outQty))
+          ),
+          React.createElement(RecipeSelect, { material: prod, qty: outQty, depth: depth + 1 })
+        );
+      })
+    )
+  );
+}
+
+// ── Ore card ─────────────────────────────────────────────────────────────────
+function OreCard({ ore }) {
+  const mult = useContext(BuffContext);
+  const [amount, setAmount] = useState("");
+  const [recipeIdx, setRecipeIdx] = useState(0);
+  const [open, setOpen] = useState(false);
+
+  const recipes = RECIPES[ore];
+  const recipe = recipes[recipeIdx];
+  const qty = parseFloat(amount.replace(/,/g, "")) || 0;
+
+  return React.createElement('div', {
+    style: {
+      background: "var(--color-background-primary)",
+      border: "0.5px solid var(--color-border-tertiary)",
+      borderRadius: "var(--border-radius-lg)",
+      overflow: "hidden", marginBottom: 12,
+    }
+  },
+    React.createElement('button', {
+      onClick: () => setOpen(o => !o),
+      style: {
+        width: "100%", display: "flex", alignItems: "center",
+        justifyContent: "space-between", padding: "14px 16px",
+        background: open ? "var(--color-background-secondary)" : "var(--color-background-primary)",
+        border: "none", cursor: "pointer",
+        borderBottom: open ? "0.5px solid var(--color-border-tertiary)" : "none",
+      }
+    },
+      React.createElement('div', { style: { display: "flex", alignItems: "center", gap: 10 } },
+        React.createElement('span', {
+          style: { fontSize: 11, fontWeight: 500, letterSpacing: "0.08em", color: "var(--color-text-secondary)", textTransform: "uppercase" }
+        }, "⛏"),
+        React.createElement('span', { style: { fontSize: 15, fontWeight: 500, color: "var(--color-text-primary)" } }, ore),
+        qty > 0 && React.createElement('span', {
+          style: { fontSize: 11, background: "var(--color-background-info)", color: "var(--color-text-info)", borderRadius: "var(--border-radius-md)", padding: "2px 8px" }
+        }, fmt(qty))
+      ),
+      React.createElement('span', { style: { fontSize: 12, color: "var(--color-text-tertiary)" } }, open ? "▲" : "▼")
+    ),
+
+    open && React.createElement('div', { style: { padding: "14px 16px" } },
+      React.createElement('div', { style: { display: "flex", gap: 10, marginBottom: 14, alignItems: "center" } },
+        React.createElement('div', { style: { flex: 1 } },
+          React.createElement('div', { style: { fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 } }, "Amount"),
+          React.createElement('input', {
+            type: "text", placeholder: "e.g. 100000", value: amount,
+            onChange: e => setAmount(e.target.value),
+            style: { width: "100%", boxSizing: "border-box" }
+          })
+        ),
+        React.createElement('div', { style: { flex: 2 } },
+          React.createElement('div', { style: { fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 } }, "Machine"),
+          React.createElement('select', {
+            value: recipeIdx,
+            onChange: e => setRecipeIdx(Number(e.target.value)),
+            style: { width: "100%" }
+          },
+            recipes.map((r, i) =>
+              React.createElement('option', { key: i, value: i },
+                `${MACHINE_ICONS[r.machine] || "⚙"} ${r.machine} — ${r.catalyst}`)
+            )
+          )
+        )
+      ),
+
+      qty > 0 && React.createElement('div', {
+        style: { background: "var(--color-background-secondary)", borderRadius: "var(--border-radius-md)", padding: "10px 12px" }
+      },
+        React.createElement('div', {
+          style: { fontSize: 11, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.07em", color: "#1D9E75", marginBottom: 8 }
+        }, "Tier 1 — direct extracts"),
+        Object.entries(recipe.outputs).map(([prod, ratio]) => {
+          // Tier-1 extraction also benefits from the buff
+          const outQty = qty * (ratio / 10000) * mult;
+          return React.createElement('div', { key: prod },
+            React.createElement('div', {
+              style: {
+                display: "flex", justifyContent: "space-between",
+                alignItems: "center", padding: "5px 0",
+                borderBottom: "0.5px solid var(--color-border-tertiary)",
+              }
+            },
+              React.createElement('span', { style: { fontSize: 13, color: "var(--color-text-primary)" } }, prod),
+              React.createElement('span', { style: { fontSize: 14, fontWeight: 500, color: "#1D9E75", fontVariantNumeric: "tabular-nums" } }, fmt(outQty))
+            ),
+            React.createElement(RecipeSelect, { material: prod, qty: outQty, depth: 0 })
+          );
+        })
+      ),
+
+      qty === 0 && React.createElement('div', {
+        style: { textAlign: "center", padding: "20px 0", fontSize: 13, color: "var(--color-text-tertiary)" }
+      }, "Enter an amount above to see extraction results")
+    )
+  );
+}
+
+// ── Root App ──────────────────────────────────────────────────────────────────
+const BUFF_MULTIPLIERS = { none: 1, cm: 1.0845, cmo: 1.1345 };
+
+function App() {
+  const [buffKey, setBuffKey] = useState("none");
+  const mult = BUFF_MULTIPLIERS[buffKey];
+
+  return React.createElement(BuffContext.Provider, { value: mult },
+    React.createElement('div', { style: { padding: "1rem 0", maxWidth: 680, margin: "0 auto" } },
+      React.createElement('h2', { style: { fontSize: 18, fontWeight: 500, marginBottom: 4 } },
+        "Mortal Online 2 — Extraction Chain Calculator"),
+      React.createElement('p', { style: { fontSize: 13, color: "var(--color-text-secondary)", marginBottom: 16 } },
+        "Select an ore, enter your amount, pick a machine, then expand any output to process it further."),
+      React.createElement(BuffBar, { buffKey, setBuffKey }),
+      Object.keys(RECIPES).map(ore =>
+        React.createElement(OreCard, { key: ore, ore: ore })
+      )
+    )
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(App));
+</script>
+</body>
+</html>
