@@ -8,479 +8,875 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <style>
   :root {
-    --color-background-primary: #1a1c22;
-    --color-background-secondary: #12141a;
-    --color-background-info: #1a2a3a;
-    --color-border-tertiary: #2e3140;
-    --color-text-primary: #e8eaf0;
-    --color-text-secondary: #8891a8;
-    --color-text-tertiary: #4e5570;
-    --color-text-info: #5ba8f5;
-    --border-radius-lg: 10px;
-    --border-radius-md: 6px;
+    --bg0: #0d0f14;
+    --bg1: #1a1c22;
+    --bg2: #12141a;
+    --bg3: #1e2028;
+    --border: #2e3140;
+    --text1: #e8eaf0;
+    --text2: #8891a8;
+    --text3: #4e5570;
+    --info-bg: #1a2a3a;
+    --info-text: #5ba8f5;
+    --green: #1D9E75;
+    --blue: #378ADD;
+    --purple: #7F77DD;
+    --gold: #c9a227;
+    --r-lg: 10px;
+    --r-md: 6px;
     font-family: 'Segoe UI', system-ui, sans-serif;
   }
-
   * { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    background: #0d0f14;
-    color: var(--color-text-primary);
-    min-height: 100vh;
-    padding: 24px 16px;
-  }
-
+  body { background: var(--bg0); color: var(--text1); min-height: 100vh; padding: 24px 16px; }
   input, select {
-    background: var(--color-background-secondary);
-    border: 1px solid var(--color-border-tertiary);
-    color: var(--color-text-primary);
-    border-radius: var(--border-radius-md);
-    padding: 7px 10px;
-    font-size: 13px;
-    outline: none;
-    width: 100%;
+    background: var(--bg2); border: 1px solid var(--border);
+    color: var(--text1); border-radius: var(--r-md);
+    padding: 7px 10px; font-size: 13px; outline: none; width: 100%;
   }
   input:focus, select:focus { border-color: #378ADD66; }
-  select option { background: #1a1c22; }
+  select option { background: var(--bg1); }
   button { font-family: inherit; }
 
+  /* Tabs */
+  .tabs { display: flex; gap: 4px; margin-bottom: 18px; border-bottom: 1px solid var(--border); padding-bottom: 0; }
+  .tab-btn {
+    padding: 8px 18px; font-size: 13px; font-weight: 500;
+    background: none; border: none; cursor: pointer;
+    color: var(--text2); border-bottom: 2px solid transparent;
+    margin-bottom: -1px; transition: all 0.15s;
+  }
+  .tab-btn:hover { color: var(--text1); }
+  .tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); }
+
+  /* Buff bar */
   .buff-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    padding: 6px 13px;
-    border-radius: 20px;
-    border: 1px solid var(--color-border-tertiary);
-    background: var(--color-background-secondary);
-    color: var(--color-text-secondary);
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 6px 13px; border-radius: 20px;
+    border: 1px solid var(--border); background: var(--bg2);
+    color: var(--text2); font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: all 0.15s; white-space: nowrap;
   }
-  .buff-toggle:hover {
-    border-color: #378ADD55;
-    color: var(--color-text-primary);
-  }
-  .buff-toggle.active-cm {
-    background: #1a2e1f;
-    border-color: #1D9E75;
-    color: #1D9E75;
-  }
-  .buff-toggle.active-cmo {
-    background: #1e2538;
-    border-color: #378ADD;
-    color: #378ADD;
-  }
-  .buff-toggle .dot {
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    background: currentColor;
-    opacity: 0.7;
-  }
+  .buff-toggle:hover { border-color: #378ADD55; color: var(--text1); }
+  .buff-toggle.active-cm  { background: #1a2e1f; border-color: var(--green); color: var(--green); }
+  .buff-toggle.active-cmo { background: #1e2538; border-color: var(--blue);  color: var(--blue);  }
+  .buff-toggle .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: 0.7; }
   .buff-bar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    padding: 10px 14px;
-    background: var(--color-background-secondary);
-    border: 0.5px solid var(--color-border-tertiary);
-    border-radius: var(--border-radius-lg);
-    margin-bottom: 18px;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 10px 14px; background: var(--bg2);
+    border: 0.5px solid var(--border); border-radius: var(--r-lg); margin-bottom: 18px;
   }
-  .buff-label {
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
-    color: var(--color-text-tertiary);
-    margin-right: 2px;
+  .buff-label { font-size: 11px; font-weight: 500; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text3); margin-right: 2px; }
+  .buff-active-badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; margin-left: auto; }
+  .buff-active-badge.cm  { background: #1a2e1f; color: var(--green); }
+  .buff-active-badge.cmo { background: #1e2538; color: var(--blue);  }
+
+  /* Danger toggle */
+  .danger-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 10px 14px; background: var(--bg2);
+    border: 0.5px solid var(--border); border-radius: var(--r-lg); margin-bottom: 18px;
   }
-  .buff-active-badge {
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-weight: 600;
-    margin-left: auto;
+  .danger-label { font-size: 11px; font-weight: 500; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text3); }
+  .danger-toggle {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border);
+    background: var(--bg2); color: var(--text2); font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: all 0.15s; white-space: nowrap; user-select: none;
   }
-  .buff-active-badge.cm  { background: #1a2e1f; color: #1D9E75; }
-  .buff-active-badge.cmo { background: #1e2538; color: #378ADD; }
-  .buff-active-badge.none { background: transparent; color: var(--color-text-tertiary); }
+  .danger-toggle:hover { border-color: #e05a3a55; }
+  .danger-toggle.on  { background: #2a1a14; border-color: #e05a3a; color: #e05a3a; }
+  .danger-toggle.off { background: #1a2e1f; border-color: var(--green); color: var(--green); }
+  .danger-toggle .tog-track {
+    width: 28px; height: 15px; border-radius: 8px; background: currentColor;
+    opacity: 0.3; position: relative; transition: all 0.15s; flex-shrink: 0;
+  }
+  .danger-toggle .tog-knob {
+    position: absolute; top: 2px; width: 11px; height: 11px;
+    border-radius: 50%; background: currentColor; opacity: 1;
+    transition: left 0.15s;
+  }
+  .danger-toggle.on  .tog-knob { left: 15px; }
+  .danger-toggle.off .tog-knob { left: 2px; }
+
+  /* Reverse search */
+  .rs-card { background: var(--bg1); border: 0.5px solid var(--border); border-radius: var(--r-lg); padding: 16px; margin-bottom: 12px; }
+  .rs-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px; }
+  .rs-field { display: flex; flex-direction: column; gap: 4px; }
+  .rs-label { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.06em; }
+  .rs-btn {
+    padding: 8px 18px; background: var(--blue); border: none;
+    border-radius: var(--r-md); color: #fff; font-size: 13px;
+    font-weight: 500; cursor: pointer; white-space: nowrap;
+  }
+  .rs-btn:hover { background: #4a9ae8; }
+  .rs-result { background: var(--bg2); border-radius: var(--r-md); padding: 12px 14px; }
+  .rs-section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 600; margin-bottom: 10px; }
+  .rs-ingredient-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 0; border-bottom: 0.5px solid var(--border);
+    font-size: 13px;
+  }
+  .rs-ingredient-row:last-child { border-bottom: none; }
+  .rs-ore-section { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .rs-ore-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 5px 0; border-bottom: 0.5px solid var(--border); font-size: 13px;
+  }
+  .rs-ore-row:last-child { border-bottom: none; }
+  .badge {
+    font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 500;
+  }
+  .badge-green { background: #1a2e1f; color: var(--green); }
+  .badge-gold  { background: #2a2010; color: var(--gold); }
+  .badge-blue  { background: var(--info-bg); color: var(--info-text); }
+  .badge-purple{ background: #21203a; color: var(--purple); }
+
+  /* Best path */
+  .bp-card { background: var(--bg1); border: 0.5px solid var(--border); border-radius: var(--r-lg); padding: 16px; margin-bottom: 12px; }
+  .bp-step {
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 10px 12px; background: var(--bg2);
+    border-radius: var(--r-md); margin-bottom: 8px;
+    border-left: 3px solid var(--border);
+  }
+  .bp-step.tier0 { border-left-color: var(--green); }
+  .bp-step.tier1 { border-left-color: var(--blue); }
+  .bp-step.tier2 { border-left-color: var(--purple); }
+  .bp-step.tier3 { border-left-color: var(--gold); }
+  .bp-step-num { font-size: 11px; font-weight: 700; color: var(--text3); min-width: 18px; padding-top: 1px; }
+  .bp-step-body { flex: 1; }
+  .bp-step-title { font-size: 13px; font-weight: 500; color: var(--text1); margin-bottom: 3px; }
+  .bp-step-detail { font-size: 12px; color: var(--text2); }
+  .bp-arrow { text-align: center; color: var(--text3); font-size: 12px; margin-bottom: 6px; }
+  .bp-final { background: #1a2e1f; border: 1px solid var(--green); border-radius: var(--r-md); padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+  .no-path { text-align: center; padding: 24px; font-size: 13px; color: var(--text3); }
+  .path-options { display: flex; flex-direction: column; gap: 10px; }
+  .path-option-btn {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r-md);
+    padding: 10px 14px; cursor: pointer; text-align: left; transition: border-color 0.15s;
+  }
+  .path-option-btn:hover { border-color: var(--blue); }
+  .path-option-btn.selected { border-color: var(--blue); background: var(--info-bg); }
 </style>
 </head>
 <body>
 <div id="root"></div>
 <script>
-const { useState, useContext, createContext } = React;
-
-// ── Buff Context ────────────────────────────────────────────────────────────
-// multiplier: 1 = no buff, 1.0845 = Clade+Mastery, 1.1345 = Clade+Mastery+Outpost
+const { useState, useContext, createContext, useCallback } = React;
 const BuffContext = createContext(1);
+const DangerContext = createContext(true); // true = has access to dangerous machines
+const DANGEROUS_MACHINES = new Set(["Blast Furnace", "Greater Nat"]);
 
-// ── Recipe Data ─────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+//  DATA
+// ═══════════════════════════════════════════════════════
+
 const RECIPES = {
   Granum: [
-    { catalyst: "None", machine: "Crusher", outputs: { Amarantum: 882, "Blood Ore": 770, Flakestone: 140, "Granum Powder": 2940 } },
-    { catalyst: "Calx Powder (715)", machine: "Attractor", outputs: { "Blood Ore": 1980 } },
+    { catalyst:"None", machine:"Crusher", outputs:{ Amarantum:882, "Blood Ore":770, Flakestone:140, "Granum Powder":2940 } },
+    { catalyst:"Calx Powder (715)", machine:"Attractor", outputs:{ "Blood Ore":1980 } },
   ],
   Calx: [
-    { catalyst: "None", machine: "Crusher", outputs: { Calspar: 360, Malachite: 891, Flakestone: 180, Coal: 2151, "Calx Powder": 1361 } },
-    { catalyst: "Water (1000)", machine: "Grinder", outputs: { Calspar: 2000, Malachite: 528, Flakestone: 36, Coal: 1140, "Calx Powder": 2058 } },
-    { catalyst: "Water (1000)", machine: "Furnace", outputs: { Calspar: 2560, Malachite: 506, Flakestone: 28 } },
+    { catalyst:"None", machine:"Crusher", outputs:{ Calspar:360, Malachite:891, Flakestone:180, Coal:2151, "Calx Powder":1361 } },
+    { catalyst:"Water (1000)", machine:"Grinder", outputs:{ Calspar:2000, Malachite:528, Flakestone:36, Coal:1140, "Calx Powder":2058 } },
+    { catalyst:"Water (1000)", machine:"Furnace", outputs:{ Calspar:2560, Malachite:506, Flakestone:28 } },
   ],
   Saburra: [
-    { catalyst: "None", machine: "Crusher", outputs: { Bleckblende: 1584, Malachite: 1584, Jadeite: 128, Pyrite: 32, "Saburra Powder": 2000 } },
-    { catalyst: "Water (1000)", machine: "Grinder", outputs: { Bleckblende: 1901, Malachite: 950, Jadeite: 16, "Saburra Powder": 4275 } },
-    { catalyst: "Coal (535)", machine: "Attractor", outputs: { Pyrite: 120 } },
+    { catalyst:"None", machine:"Crusher", outputs:{ Bleckblende:1584, Malachite:1584, Jadeite:128, Pyrite:32, "Saburra Powder":2000 } },
+    { catalyst:"Water (1000)", machine:"Grinder", outputs:{ Bleckblende:1901, Malachite:950, Jadeite:16, "Saburra Powder":4275 } },
+    { catalyst:"Coal (535)", machine:"Attractor", outputs:{ Pyrite:120 } },
   ],
   Tephra: [
-    { catalyst: "None", machine: "Crusher", outputs: { Galbinum: 1200, Cinnabar: 144, Magmum: 288, "Red Bleckblende": 312, "Volcanic Ash": 2220 } },
-    { catalyst: "Bor (720)", machine: "Grinder", outputs: { Galbinum: 1200, Cinnabar: 90, Magmum: 259, "Red Bleckblende": 807, "Volcanic Ash": 2753 } },
-    { catalyst: "Water (1000)", machine: "Grinder", outputs: { Galbinum: 1900, Cinnabar: 88, Magmum: 259, "Red Bleckblende": 774, "Volcanic Ash": 2960 } },
-    { catalyst: "Calx Powder (715)", machine: "Greater Nat", outputs: { Galbinum: 250, Cinnabar: 36, Magmum: 122, "Red Bleckblende": 2600, "Volcanic Ash": 148 } },
-    { catalyst: "Bor (720)", machine: "Greater Nat", outputs: { Galbinum: 1250, Cinnabar: 94, Magmum: 36, "Red Bleckblende": 1976, "Volcanic Ash": 326 } },
-    { catalyst: "Calx Powder (715)", machine: "Furnace", outputs: { Galbinum: 299, Cinnabar: 54, Magmum: 259, "Red Bleckblende": 2080, "Volcanic Ash": 444 } },
+    { catalyst:"None", machine:"Crusher", outputs:{ Galbinum:1200, Cinnabar:144, Magmum:288, "Red Bleckblende":312, "Volcanic Ash":2220 } },
+    { catalyst:"Bor (720)", machine:"Grinder", outputs:{ Galbinum:1200, Cinnabar:90, Magmum:259, "Red Bleckblende":807, "Volcanic Ash":2753 } },
+    { catalyst:"Water (1000)", machine:"Grinder", outputs:{ Galbinum:1900, Cinnabar:88, Magmum:259, "Red Bleckblende":774, "Volcanic Ash":2960 } },
+    { catalyst:"Calx Powder (715)", machine:"Greater Nat", outputs:{ Galbinum:250, Cinnabar:36, Magmum:122, "Red Bleckblende":2600, "Volcanic Ash":148 } },
+    { catalyst:"Bor (720)", machine:"Greater Nat", outputs:{ Galbinum:1250, Cinnabar:94, Magmum:36, "Red Bleckblende":1976, "Volcanic Ash":326 } },
+    { catalyst:"Calx Powder (715)", machine:"Furnace", outputs:{ Galbinum:299, Cinnabar:54, Magmum:259, "Red Bleckblende":2080, "Volcanic Ash":444 } },
   ],
   Gabore: [
-    { catalyst: "None", machine: "Crusher", outputs: { Galbinum: 750, "Blood Ore": 510, Nyx: 36, "Gabore Powder": 2340 } },
-    { catalyst: "Bor (720)", machine: "Grinder", outputs: { Galbinum: 1050, "Blood Ore": 226, "Gabore Powder": 4168 } },
-    { catalyst: "Coke (385)", machine: "Furnace", outputs: { Galbinum: 243, "Blood Ore": 595, Nyx: 168 } },
+    { catalyst:"None", machine:"Crusher", outputs:{ Galbinum:750, "Blood Ore":510, Nyx:36, "Gabore Powder":2340 } },
+    { catalyst:"Bor (720)", machine:"Grinder", outputs:{ Galbinum:1050, "Blood Ore":226, "Gabore Powder":4168 } },
+    { catalyst:"Coke (385)", machine:"Furnace", outputs:{ Galbinum:243, "Blood Ore":595, Nyx:168 } },
   ],
   Kimurite: [
-    { catalyst: "None", machine: "Crusher", outputs: { Waterstone: 3800, Magmum: 3520, Pyrite: 200 } },
+    { catalyst:"None", machine:"Crusher", outputs:{ Waterstone:3800, Magmum:3520, Pyrite:200 } },
   ],
 };
 
 const SUB_RECIPES = {
   "Blood Ore": [
-    { catalyst: "Coke (385)", machine: "Furnace", outputs: { "Pig Iron": 4000 } },
-    { catalyst: "Coke (385)", machine: "Blast Furnace", outputs: { "Pig Iron": 5000 } },
-    { catalyst: "Glimmer Powder (715)", machine: "Blast Furnace", outputs: { "Pig Iron": 5900 } },
+    { catalyst:"Coke (385)", machine:"Furnace", outputs:{ "Pig Iron":4000 } },
+    { catalyst:"Coke (385)", machine:"Blast Furnace", outputs:{ "Pig Iron":5000 } },
+    { catalyst:"Glimmer Powder (715)", machine:"Blast Furnace", outputs:{ "Pig Iron":5900 } },
   ],
   Amarantum: [
-    { catalyst: "None", machine: "Crusher", outputs: { Waterstone: 900, Electrum: 180, Cuprum: 270, Bleck: 135, Calamine: 90 } },
-    { catalyst: "Bor (720)", machine: "Furnace", outputs: { Electrum: 480, Cuprum: 2400, Bleck: 960, Calamine: 563 } },
-    { catalyst: "Bor (720)", machine: "Blast Furnace", outputs: { Electrum: 800, Cuprum: 3000, Bleck: 600, Calamine: 624 } },
+    { catalyst:"None", machine:"Crusher", outputs:{ Waterstone:900, Electrum:180, Cuprum:270, Bleck:135, Calamine:90 } },
+    { catalyst:"Bor (720)", machine:"Furnace", outputs:{ Electrum:480, Cuprum:2400, Bleck:960, Calamine:563 } },
+    { catalyst:"Bor (720)", machine:"Blast Furnace", outputs:{ Electrum:800, Cuprum:3000, Bleck:600, Calamine:624 } },
   ],
   Calspar: [
-    { catalyst: "Dragon Salt (190)", machine: "Furnace", outputs: { "Chalk Glance": 245, Electrum: 88, Malachite: 1445 } },
-    { catalyst: "Ichor (660)", machine: "Furnace", outputs: { "Chalk Glance": 159, Electrum: 212, Malachite: 2793 } },
-    { catalyst: "Sulfur (560)", machine: "Furnace", outputs: { "Chalk Glance": 142, Electrum: 129, Malachite: 1782 } },
-    { catalyst: "Water (1000)", machine: "Furnace", outputs: { "Chalk Glance": 72, Electrum: 109, Malachite: 3468 } },
-    { catalyst: "Bor (720)", machine: "Furnace", outputs: { "Chalk Glance": 72, Electrum: 294, Malachite: 4816 } },
-    { catalyst: "Coke (385)", machine: "Furnace", outputs: { "Chalk Glance": 72, Electrum: 212, Malachite: 3468 } },
-    { catalyst: "Dragon Salt (190)", machine: "Blast Furnace", outputs: { "Chalk Glance": 700, Electrum: 224, Malachite: 2064 } },
-    { catalyst: "Ichor (660)", machine: "Blast Furnace", outputs: { "Chalk Glance": 490, Electrum: 426, Malachite: 3302 } },
-    { catalyst: "Sulfur (560)", machine: "Blast Furnace", outputs: { "Chalk Glance": 291, Electrum: 291, Malachite: 2374 } },
-    { catalyst: "Dragon Salt (190)", machine: "Fabricula", outputs: { "Chalk Glance": 420 } },
-    { catalyst: "Ichor (660)", machine: "Fabricula", outputs: { "Chalk Glance": 210, Electrum: 336, Malachite: 1376 } },
-    { catalyst: "Sulfur (560)", machine: "Fabricula", outputs: { "Chalk Glance": 168, Electrum: 112, Malachite: 344 } },
-    { catalyst: "Bor (720)", machine: "Fabricula", outputs: { Electrum: 560, Malachite: 3440 } },
+    { catalyst:"Dragon Salt (190)", machine:"Furnace", outputs:{ "Chalk Glance":245, Electrum:88, Malachite:1445 } },
+    { catalyst:"Ichor (660)", machine:"Furnace", outputs:{ "Chalk Glance":159, Electrum:212, Malachite:2793 } },
+    { catalyst:"Sulfur (560)", machine:"Furnace", outputs:{ "Chalk Glance":142, Electrum:129, Malachite:1782 } },
+    { catalyst:"Water (1000)", machine:"Furnace", outputs:{ "Chalk Glance":72, Electrum:109, Malachite:3468 } },
+    { catalyst:"Bor (720)", machine:"Furnace", outputs:{ "Chalk Glance":72, Electrum:294, Malachite:4816 } },
+    { catalyst:"Coke (385)", machine:"Furnace", outputs:{ "Chalk Glance":72, Electrum:212, Malachite:3468 } },
+    { catalyst:"Dragon Salt (190)", machine:"Blast Furnace", outputs:{ "Chalk Glance":700, Electrum:224, Malachite:2064 } },
+    { catalyst:"Ichor (660)", machine:"Blast Furnace", outputs:{ "Chalk Glance":490, Electrum:426, Malachite:3302 } },
+    { catalyst:"Sulfur (560)", machine:"Blast Furnace", outputs:{ "Chalk Glance":291, Electrum:291, Malachite:2374 } },
+    { catalyst:"Dragon Salt (190)", machine:"Fabricula", outputs:{ "Chalk Glance":420 } },
+    { catalyst:"Ichor (660)", machine:"Fabricula", outputs:{ "Chalk Glance":210, Electrum:336, Malachite:1376 } },
+    { catalyst:"Sulfur (560)", machine:"Fabricula", outputs:{ "Chalk Glance":168, Electrum:112, Malachite:344 } },
+    { catalyst:"Bor (720)", machine:"Fabricula", outputs:{ Electrum:560, Malachite:3440 } },
   ],
   Malachite: [
-    { catalyst: "Bor (720)", machine: "Furnace", outputs: { Cuprum: 4000, Sulfur: 47 } },
-    { catalyst: "Coke (385)", machine: "Furnace", outputs: { Cuprum: 4000, Sulfur: 83 } },
-    { catalyst: "Glimmer Powder (715)", machine: "Furnace", outputs: { Cuprum: 5000 } },
-    { catalyst: "Bor (720)", machine: "Blast Furnace", outputs: { Cuprum: 5000 } },
-    { catalyst: "Bor (720)", machine: "Fabricula", outputs: { Cuprum: 4000, Sulfur: 64 } },
-    { catalyst: "Coke (385)", machine: "Fabricula", outputs: { Cuprum: 4000, Sulfur: 320 } },
-    { catalyst: "Coal (535)", machine: "Fabricula", outputs: { Cuprum: 2400, Sulfur: 640 } },
+    { catalyst:"Bor (720)", machine:"Furnace", outputs:{ Cuprum:4000, Sulfur:47 } },
+    { catalyst:"Coke (385)", machine:"Furnace", outputs:{ Cuprum:4000, Sulfur:83 } },
+    { catalyst:"Glimmer Powder (715)", machine:"Furnace", outputs:{ Cuprum:5000 } },
+    { catalyst:"Bor (720)", machine:"Blast Furnace", outputs:{ Cuprum:5000 } },
+    { catalyst:"Bor (720)", machine:"Fabricula", outputs:{ Cuprum:4000, Sulfur:64 } },
+    { catalyst:"Coke (385)", machine:"Fabricula", outputs:{ Cuprum:4000, Sulfur:320 } },
+    { catalyst:"Coal (535)", machine:"Fabricula", outputs:{ Cuprum:2400, Sulfur:640 } },
   ],
   Bleckblende: [
-    { catalyst: "Bor (720)", machine: "Natorus", outputs: { Bleck: 5400 } },
-    { catalyst: "Rock Oil (420)", machine: "Natorus", outputs: { Bleck: 5400 } },
-    { catalyst: "Bor (720)", machine: "Greater Nat", outputs: { Bleck: 6000 } },
-    { catalyst: "Bor (720)", machine: "Furnace", outputs: { Bleck: 1920 } },
+    { catalyst:"Bor (720)", machine:"Natorus", outputs:{ Bleck:5400 } },
+    { catalyst:"Rock Oil (420)", machine:"Natorus", outputs:{ Bleck:5400 } },
+    { catalyst:"Bor (720)", machine:"Greater Nat", outputs:{ Bleck:6000 } },
+    { catalyst:"Bor (720)", machine:"Furnace", outputs:{ Bleck:1920 } },
   ],
   Cinnabar: [
-    { catalyst: "Bor (720)", machine: "Furnace", outputs: { Ichor: 3900, Sulfur: 296 } },
-    { catalyst: "Bor (720)", machine: "Greater Nat", outputs: { Sulfur: 672 } },
-    { catalyst: "Bor (720)", machine: "Fabricula", outputs: { Ichor: 960, Sulfur: 160 } },
+    { catalyst:"Bor (720)", machine:"Furnace", outputs:{ Ichor:3900, Sulfur:296 } },
+    { catalyst:"Bor (720)", machine:"Greater Nat", outputs:{ Sulfur:672 } },
+    { catalyst:"Bor (720)", machine:"Fabricula", outputs:{ Ichor:960, Sulfur:160 } },
   ],
   Coal: [
-    { catalyst: "Coal (535)", machine: "Furnace", outputs: { Coke: 7200 } },
-    { catalyst: "Calx Powder (715)", machine: "Furnace", outputs: { Coke: 7200 } },
+    { catalyst:"Coal (535)", machine:"Furnace", outputs:{ Coke:7200 } },
+    { catalyst:"Calx Powder (715)", machine:"Furnace", outputs:{ Coke:7200 } },
   ],
   Magmum: [
-    { catalyst: "None", machine: "Grizzly", outputs: { Kyanite: 2500, Maalite: 650, Pyropite: 200 } },
-    { catalyst: "Bor (720)", machine: "Kiln", outputs: { Maalite: 2080, Pyropite: 480 } },
-    { catalyst: "Coke (385)", machine: "Kiln", outputs: { Maalite: 4264, Pyropite: 221 } },
-    { catalyst: "Bor (720)", machine: "Hearth", outputs: { Maalite: 780, Pyropite: 600 } },
+    { catalyst:"None", machine:"Grizzly", outputs:{ Kyanite:2500, Maalite:650, Pyropite:200 } },
+    { catalyst:"Bor (720)", machine:"Kiln", outputs:{ Maalite:2080, Pyropite:480 } },
+    { catalyst:"Coke (385)", machine:"Kiln", outputs:{ Maalite:4264, Pyropite:221 } },
+    { catalyst:"Bor (720)", machine:"Hearth", outputs:{ Maalite:780, Pyropite:600 } },
   ],
   Galbinum: [
-    { catalyst: "Calx Powder (715)", machine: "Furnace", outputs: { Lupium: 171, Pyrite: 37, Pyroxene: 696 } },
-    { catalyst: "Calx Powder (715)", machine: "Blast Furnace", outputs: { Lupium: 315, Pyroxene: 1280 } },
-    { catalyst: "Coke (385)", machine: "Blast Furnace", outputs: { Lupium: 246, Pyroxene: 1760 } },
-    { catalyst: "Bor (720)", machine: "Blast Furnace", outputs: { Lupium: 246, Pyroxene: 1400 } },
-    { catalyst: "Coke", machine: "Greater Nat", outputs: { Lupium: 62, Pyrite: 653, Pyroxene: 4200 } },
+    { catalyst:"Calx Powder (715)", machine:"Furnace", outputs:{ Lupium:171, Pyrite:37, Pyroxene:696 } },
+    { catalyst:"Calx Powder (715)", machine:"Blast Furnace", outputs:{ Lupium:315, Pyroxene:1280 } },
+    { catalyst:"Coke (385)", machine:"Blast Furnace", outputs:{ Lupium:246, Pyroxene:1760 } },
+    { catalyst:"Bor (720)", machine:"Blast Furnace", outputs:{ Lupium:246, Pyroxene:1400 } },
+    { catalyst:"Coke", machine:"Greater Nat", outputs:{ Lupium:62, Pyrite:653, Pyroxene:4200 } },
   ],
   "Red Bleckblende": [
-    { catalyst: "Coke (385)", machine: "Furnace", outputs: { Aabam: 2322, Silver: 198, Sanguinite: 23, Calamine: 569 } },
-    { catalyst: "Rock Oil (420)", machine: "Blast Furnace", outputs: { Aabam: 3000, Silver: 200, Sanguinite: 140, Calamine: 240 } },
-    { catalyst: "Fuming Salt (315)", machine: "Blast Furnace", outputs: { Aabam: 3000, Silver: 350, Sanguinite: 200, Calamine: 456 } },
+    { catalyst:"Coke (385)", machine:"Furnace", outputs:{ Aabam:2322, Silver:198, Sanguinite:23, Calamine:569 } },
+    { catalyst:"Rock Oil (420)", machine:"Blast Furnace", outputs:{ Aabam:3000, Silver:200, Sanguinite:140, Calamine:240 } },
+    { catalyst:"Fuming Salt (315)", machine:"Blast Furnace", outputs:{ Aabam:3000, Silver:350, Sanguinite:200, Calamine:456 } },
   ],
   Waterstone: [
-    { catalyst: "Rock Oil (420)", machine: "Fabricula", outputs: { "Gem Metal": 3200 } },
-    { catalyst: "Bor (720)", machine: "Fabricula", outputs: { "Gem Metal": 1920, Lupium: 960 } },
-    { catalyst: "Fuming Salt (315)", machine: "Fabricula", outputs: { "Gem Metal": 640, Lupium: 2400 } },
-    { catalyst: "Fuming Salt (315)", machine: "Blast Furnace", outputs: { "Gem Metal": 1248, Lupium: 3200 } },
-    { catalyst: "Bor (720)", machine: "Blast Furnace", outputs: { "Gem Metal": 1824, Lupium: 2048 } },
+    { catalyst:"Rock Oil (420)", machine:"Fabricula", outputs:{ "Gem Metal":3200 } },
+    { catalyst:"Bor (720)", machine:"Fabricula", outputs:{ "Gem Metal":1920, Lupium:960 } },
+    { catalyst:"Fuming Salt (315)", machine:"Fabricula", outputs:{ "Gem Metal":640, Lupium:2400 } },
+    { catalyst:"Fuming Salt (315)", machine:"Blast Furnace", outputs:{ "Gem Metal":1248, Lupium:3200 } },
+    { catalyst:"Bor (720)", machine:"Blast Furnace", outputs:{ "Gem Metal":1824, Lupium:2048 } },
   ],
   Electrum: [
-    { catalyst: "Calx Powder (715)", machine: "Furnace", outputs: { Cuprum: 2600, Silver: 1600, Gold: 1400 } },
-    { catalyst: "Calx Powder (715)", machine: "Blast Furnace", outputs: { Cuprum: 3500, Silver: 2500, Gold: 1750 } },
+    { catalyst:"Calx Powder (715)", machine:"Furnace", outputs:{ Cuprum:2600, Silver:1600, Gold:1400 } },
+    { catalyst:"Calx Powder (715)", machine:"Blast Furnace", outputs:{ Cuprum:3500, Silver:2500, Gold:1750 } },
   ],
   "Chalk Glance": [
-    { catalyst: "Dragon Salt (190)", machine: "Fabricula", outputs: { Skadite: 3200 } },
-    { catalyst: "Ichor (660)", machine: "Fabricula", outputs: { Skadite: 3200 } },
+    { catalyst:"Dragon Salt (190)", machine:"Fabricula", outputs:{ Skadite:3200 } },
+    { catalyst:"Ichor (660)", machine:"Fabricula", outputs:{ Skadite:3200 } },
   ],
   Pyroxene: [
-    { catalyst: "Calx Powder (715)", machine: "Blast Furnace", outputs: { Almine: 400, Acronite: 800, Electrum: 2720, Calamine: 2040 } },
-    { catalyst: "Calx Powder (715)", machine: "Greater Nat", outputs: { Almine: 2000, Acronite: 160, Electrum: 2720, Calamine: 3400 } },
+    { catalyst:"Calx Powder (715)", machine:"Blast Furnace", outputs:{ Almine:400, Acronite:800, Electrum:2720, Calamine:2040 } },
+    { catalyst:"Calx Powder (715)", machine:"Greater Nat", outputs:{ Almine:2000, Acronite:160, Electrum:2720, Calamine:3400 } },
   ],
   Azurite: [
-    { catalyst: "Fuming Salt (315)", machine: "Fabricula", outputs: { Cuprite: 300 } },
+    { catalyst:"Fuming Salt (315)", machine:"Fabricula", outputs:{ Cuprite:300 } },
   ],
 };
 
-const fmt = (n) => Math.round(n).toLocaleString();
-
-const MACHINE_ICONS = {
-  Crusher: "⚙", Grinder: "🔩", Furnace: "🔥", "Blast Furnace": "♨",
-  Attractor: "🧲", "Greater Nat": "🌀", Natorus: "⚗", Fabricula: "🏭",
-  Grizzly: "🪨", Kiln: "🏺", Hearth: "🪵",
+// Refining recipes from the image (ratio stored as parts: [ingredient, parts])
+// 2:1:1 means ingredient1*2 + ingredient2*1 + ingredient3*1 per unit of output
+// We store ratios normalised to: to make 1 unit of output you need these ingredients
+// Image table: Recipe=output, col2=x2, col1=x1, col1=x1
+const REFINING_RECIPES = {
+  Bron:          { ingredients: [["Cuprum",2],["Bleck",1],["Saburra Powder",1]] },
+  Messing:       { ingredients: [["Cuprum",2],["Calamine",1],["Saburra Powder",1]] },
+  "Tind Messing":{ ingredients: [["Messing",2],["Almine",1],["Gem Metal",1]] },
+  "Grain Steel": { ingredients: [["Pig Iron",2],["Calx Powder",1],["Coke",1]] },
+  Steel:         { ingredients: [["Grain Steel",2],["Coal",1],["Saburra Powder",1]] },
+  Tungsteel:     { ingredients: [["Grain Steel",2],["Lupium",1],["Granum Powder",1]] },
+  Cronite:       { ingredients: [["Grain Steel",2],["Almine",1],["Acronite",1]] },
+  Oghmium:       { ingredients: [["Tungsteel",2],["Cronite",1],["Sanguinite",1]] },
 };
 
-const TIER_STYLE = [
-  { bg: "var(--color-background-secondary)", accent: "#1D9E75" },
-  { bg: "var(--color-background-primary)", accent: "#378ADD" },
-  { bg: "var(--color-background-secondary)", accent: "#7F77DD" },
-];
+// For the reverse search, we need to know which ore + recipe yields each ingredient.
+// Build a lookup: material -> list of { ore, recipeIdx, ratio (per 10000 of ore) }
+function buildExtractionIndex(allowDangerous) {
+  const idx = {};
+  const addEntry = (material, source) => {
+    if (!allowDangerous && DANGEROUS_MACHINES.has(source.machine)) return;
+    if (!idx[material]) idx[material] = [];
+    idx[material].push(source);
+  };
+  Object.entries(RECIPES).forEach(([ore, recipes]) => {
+    recipes.forEach((r, ri) => {
+      Object.entries(r.outputs).forEach(([mat, ratio]) => {
+        addEntry(mat, { type:"ore", ore, recipeIdx:ri, ratio, catalyst:r.catalyst, machine:r.machine });
+      });
+    });
+  });
+  Object.entries(SUB_RECIPES).forEach(([input, recipes]) => {
+    recipes.forEach((r, ri) => {
+      Object.entries(r.outputs).forEach(([mat, ratio]) => {
+        addEntry(mat, { type:"sub", input, recipeIdx:ri, ratio, catalyst:r.catalyst, machine:r.machine });
+      });
+    });
+  });
+  return idx;
+}
 
-// ── Buff toggle bar ──────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════════════════
+const fmt = n => Math.round(n).toLocaleString();
+const MACHINE_ICONS = {
+  Crusher:"⚙", Grinder:"🔩", Furnace:"🔥", "Blast Furnace":"♨",
+  Attractor:"🧲", "Greater Nat":"🌀", Natorus:"⚗", Fabricula:"🏭",
+  Grizzly:"🪨", Kiln:"🏺", Hearth:"🪵",
+};
+const TIER_STYLE = [
+  { bg:"var(--bg2)", accent:"#1D9E75" },
+  { bg:"var(--bg1)", accent:"#378ADD" },
+  { bg:"var(--bg2)", accent:"#7F77DD" },
+];
+const BUFF_MULTIPLIERS = { none:1, cm:1.0845, cmo:1.1345 };
+
+// ══════════════════════════════════════════════════════
+//  BUFF BAR
+// ══════════════════════════════════════════════════════
 function BuffBar({ buffKey, setBuffKey }) {
   const BUFFS = [
-    { key: "none", label: "No Buff", pct: null, cls: "" },
-    { key: "cm",   label: "Clade + Mastery", pct: "+8.45%", cls: "active-cm" },
-    { key: "cmo",  label: "Clade + Mastery + Outpost", pct: "+13.45%", cls: "active-cmo" },
+    { key:"none", label:"No Buff", pct:null, cls:"" },
+    { key:"cm",   label:"Clade + Mastery", pct:"+8.45%", cls:"active-cm" },
+    { key:"cmo",  label:"Clade + Mastery + Outpost", pct:"+13.45%", cls:"active-cmo" },
   ];
-
   const active = BUFFS.find(b => b.key === buffKey);
-
-  return React.createElement('div', { className: 'buff-bar' },
-    React.createElement('span', { className: 'buff-label' }, "⚡ Buff"),
+  return React.createElement('div', { className:'buff-bar' },
+    React.createElement('span', { className:'buff-label' }, "⚡ Buff"),
     BUFFS.map(b =>
       React.createElement('button', {
-        key: b.key,
-        className: `buff-toggle${buffKey === b.key ? ' ' + b.cls : ''}`,
-        onClick: () => setBuffKey(b.key),
+        key:b.key, className:`buff-toggle${buffKey===b.key?' '+b.cls:''}`,
+        onClick:()=>setBuffKey(b.key),
       },
-        buffKey === b.key && React.createElement('span', { className: 'dot' }),
+        buffKey===b.key && React.createElement('span',{className:'dot'}),
         b.label,
-        b.pct && React.createElement('span', {
-          style: { opacity: 0.75, fontSize: 11 }
-        }, ` ${b.pct}`)
+        b.pct && React.createElement('span',{style:{opacity:.75,fontSize:11}},` ${b.pct}`)
       )
     ),
-    buffKey !== "none" && React.createElement('span', {
-      className: `buff-active-badge ${buffKey}`
-    }, active.pct + " yield")
+    buffKey!=="none" && React.createElement('span',{className:`buff-active-badge ${buffKey}`}, active.pct+" yield")
   );
 }
 
-// ── Sub-recipe expander ──────────────────────────────────────────────────────
+function DangerBar({ allowDangerous, setAllowDangerous }) {
+  return React.createElement('div', { className:'danger-bar' },
+    React.createElement('span', { className:'danger-label' }, "☠ Machines"),
+    React.createElement('button', {
+      className: `danger-toggle ${allowDangerous ? 'on' : 'off'}`,
+      onClick: () => setAllowDangerous(v => !v),
+    },
+      React.createElement('div', { className:'tog-track' },
+        React.createElement('div', { className:'tog-knob' })
+      ),
+      allowDangerous
+        ? "Have access to Greater Nat + Blast Furnace"
+        : "No access to Greater Nat + Blast Furnace",
+    ),
+    React.createElement('span', {
+      style: { fontSize:11, color: allowDangerous ? "#e05a3a" : "var(--green)", marginLeft:"auto", fontWeight:500 }
+    }, allowDangerous ? "⚠ High-yield dangerous machines included" : "✓ Safe machines only")
+  );
+}
+// ══════════════════════════════════════════════════════
+//  EXTRACTION TAB — original calculator
+// ══════════════════════════════════════════════════════
 function RecipeSelect({ material, qty, depth }) {
   const mult = useContext(BuffContext);
-  const recipes = SUB_RECIPES[material];
+  const allowDangerous = useContext(DangerContext);
+  const allRecipes = SUB_RECIPES[material];
   const [open, setOpen] = useState(false);
   const [recipeIdx, setRecipeIdx] = useState(0);
-
-  if (!recipes || qty <= 0) return null;
-
-  const recipe = recipes[recipeIdx];
-  const ts = TIER_STYLE[Math.min(depth, 2)];
-
-  return React.createElement('div', {
-    style: {
-      marginTop: 6,
-      marginLeft: depth === 0 ? 0 : 16,
-      borderLeft: `2px solid ${ts.accent}22`,
-      paddingLeft: 12,
-    }
-  },
-    React.createElement('button', {
-      onClick: () => setOpen(o => !o),
-      style: {
-        display: "flex", alignItems: "center", gap: 8,
-        background: "none", border: "none", cursor: "pointer",
-        padding: "4px 0", width: "100%",
-      }
-    },
-      React.createElement('span', {
-        style: { fontSize: 11, fontWeight: 500, color: ts.accent, textTransform: "uppercase", letterSpacing: "0.06em" }
-      }, `${open ? "▾" : "▸"} ${material} → process`)
+  if (!allRecipes || qty <= 0) return null;
+  const recipes = allRecipes.filter(r => allowDangerous || !DANGEROUS_MACHINES.has(r.machine));
+  if (recipes.length === 0) return null;
+  const safeIdx = Math.min(recipeIdx, recipes.length - 1);
+  const recipe = recipes[safeIdx];
+  const ts = TIER_STYLE[Math.min(depth,2)];
+  return React.createElement('div',{style:{marginTop:6,marginLeft:depth===0?0:16,borderLeft:`2px solid ${ts.accent}22`,paddingLeft:12}},
+    React.createElement('button',{onClick:()=>setOpen(o=>!o),style:{display:"flex",alignItems:"center",gap:8,background:"none",border:"none",cursor:"pointer",padding:"4px 0",width:"100%"}},
+      React.createElement('span',{style:{fontSize:11,fontWeight:500,color:ts.accent,textTransform:"uppercase",letterSpacing:"0.06em"}},
+        `${open?"▾":"▸"} ${material} → process`)
     ),
-
-    open && React.createElement('div', {
-      style: {
-        background: ts.bg,
-        border: `0.5px solid var(--color-border-tertiary)`,
-        borderRadius: "var(--border-radius-md)",
-        padding: "10px 12px", marginTop: 4,
-      }
-    },
-      React.createElement('div', { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10 } },
-        React.createElement('span', { style: { fontSize: 12, color: "var(--color-text-secondary)", whiteSpace: "nowrap" } }, "Machine"),
-        React.createElement('select', {
-          value: recipeIdx,
-          onChange: e => setRecipeIdx(Number(e.target.value)),
-          style: { fontSize: 12, flex: 1, minWidth: 0 }
-        },
-          recipes.map((r, i) =>
-            React.createElement('option', { key: i, value: i },
-              `${MACHINE_ICONS[r.machine] || "⚙"} ${r.machine} — ${r.catalyst}`)
-          )
+    open && React.createElement('div',{style:{background:ts.bg,border:`0.5px solid var(--border)`,borderRadius:"var(--r-md)",padding:"10px 12px",marginTop:4}},
+      React.createElement('div',{style:{display:"flex",alignItems:"center",gap:8,marginBottom:10}},
+        React.createElement('span',{style:{fontSize:12,color:"var(--text2)",whiteSpace:"nowrap"}},"Machine"),
+        React.createElement('select',{value:recipeIdx,onChange:e=>setRecipeIdx(Number(e.target.value)),style:{fontSize:12,flex:1,minWidth:0}},
+          recipes.map((r,i)=>React.createElement('option',{key:i,value:i},`${MACHINE_ICONS[r.machine]||"⚙"} ${r.machine} — ${r.catalyst}`))
         )
       ),
-      Object.entries(recipe.outputs).map(([prod, ratio]) => {
-        // Each refining step gets the buff applied to its output
-        const outQty = qty * (ratio / 10000) * mult;
-        return React.createElement('div', { key: prod },
-          React.createElement('div', {
-            style: {
-              display: "flex", justifyContent: "space-between",
-              alignItems: "center", padding: "4px 0",
-              borderBottom: "0.5px solid var(--color-border-tertiary)",
-            }
-          },
-            React.createElement('span', { style: { fontSize: 13, color: "var(--color-text-primary)" } }, prod),
-            React.createElement('span', {
-              style: { fontSize: 13, fontWeight: 500, color: ts.accent, fontVariantNumeric: "tabular-nums" }
-            }, fmt(outQty))
+      Object.entries(recipe.outputs).map(([prod,ratio])=>{
+        const outQty = qty*(ratio/10000)*mult;
+        return React.createElement('div',{key:prod},
+          React.createElement('div',{style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:"0.5px solid var(--border)"}},
+            React.createElement('span',{style:{fontSize:13,color:"var(--text1)"}},prod),
+            React.createElement('span',{style:{fontSize:13,fontWeight:500,color:ts.accent,fontVariantNumeric:"tabular-nums"}},fmt(outQty))
           ),
-          React.createElement(RecipeSelect, { material: prod, qty: outQty, depth: depth + 1 })
+          React.createElement(RecipeSelect,{material:prod,qty:outQty,depth:depth+1})
         );
       })
     )
   );
 }
 
-// ── Ore card ─────────────────────────────────────────────────────────────────
 function OreCard({ ore }) {
   const mult = useContext(BuffContext);
+  const allowDangerous = useContext(DangerContext);
   const [amount, setAmount] = useState("");
   const [recipeIdx, setRecipeIdx] = useState(0);
   const [open, setOpen] = useState(false);
-
-  const recipes = RECIPES[ore];
-  const recipe = recipes[recipeIdx];
-  const qty = parseFloat(amount.replace(/,/g, "")) || 0;
-
-  return React.createElement('div', {
-    style: {
-      background: "var(--color-background-primary)",
-      border: "0.5px solid var(--color-border-tertiary)",
-      borderRadius: "var(--border-radius-lg)",
-      overflow: "hidden", marginBottom: 12,
-    }
-  },
-    React.createElement('button', {
-      onClick: () => setOpen(o => !o),
-      style: {
-        width: "100%", display: "flex", alignItems: "center",
-        justifyContent: "space-between", padding: "14px 16px",
-        background: open ? "var(--color-background-secondary)" : "var(--color-background-primary)",
-        border: "none", cursor: "pointer",
-        borderBottom: open ? "0.5px solid var(--color-border-tertiary)" : "none",
-      }
-    },
-      React.createElement('div', { style: { display: "flex", alignItems: "center", gap: 10 } },
-        React.createElement('span', {
-          style: { fontSize: 11, fontWeight: 500, letterSpacing: "0.08em", color: "var(--color-text-secondary)", textTransform: "uppercase" }
-        }, "⛏"),
-        React.createElement('span', { style: { fontSize: 15, fontWeight: 500, color: "var(--color-text-primary)" } }, ore),
-        qty > 0 && React.createElement('span', {
-          style: { fontSize: 11, background: "var(--color-background-info)", color: "var(--color-text-info)", borderRadius: "var(--border-radius-md)", padding: "2px 8px" }
-        }, fmt(qty))
+  const allRecipes = RECIPES[ore];
+  const recipes = allRecipes.filter(r => allowDangerous || !DANGEROUS_MACHINES.has(r.machine));
+  const safeIdx = Math.min(recipeIdx, recipes.length - 1);
+  const recipe = recipes[safeIdx];
+  const qty = parseFloat(amount.replace(/,/g,""))||0;
+  return React.createElement('div',{style:{background:"var(--bg1)",border:"0.5px solid var(--border)",borderRadius:"var(--r-lg)",overflow:"hidden",marginBottom:12}},
+    React.createElement('button',{onClick:()=>setOpen(o=>!o),style:{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 16px",background:open?"var(--bg2)":"var(--bg1)",border:"none",cursor:"pointer",borderBottom:open?"0.5px solid var(--border)":"none"}},
+      React.createElement('div',{style:{display:"flex",alignItems:"center",gap:10}},
+        React.createElement('span',{style:{fontSize:11,fontWeight:500,letterSpacing:"0.08em",color:"var(--text2)",textTransform:"uppercase"}},"⛏"),
+        React.createElement('span',{style:{fontSize:15,fontWeight:500,color:"var(--text1)"}},ore),
+        qty>0&&React.createElement('span',{style:{fontSize:11,background:"var(--info-bg)",color:"var(--info-text)",borderRadius:"var(--r-md)",padding:"2px 8px"}},fmt(qty))
       ),
-      React.createElement('span', { style: { fontSize: 12, color: "var(--color-text-tertiary)" } }, open ? "▲" : "▼")
+      React.createElement('span',{style:{fontSize:12,color:"var(--text3)"}},open?"▲":"▼")
     ),
-
-    open && React.createElement('div', { style: { padding: "14px 16px" } },
-      React.createElement('div', { style: { display: "flex", gap: 10, marginBottom: 14, alignItems: "center" } },
-        React.createElement('div', { style: { flex: 1 } },
-          React.createElement('div', { style: { fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 } }, "Amount"),
-          React.createElement('input', {
-            type: "text", placeholder: "e.g. 100000", value: amount,
-            onChange: e => setAmount(e.target.value),
-            style: { width: "100%", boxSizing: "border-box" }
-          })
+    open&&React.createElement('div',{style:{padding:"14px 16px"}},
+      React.createElement('div',{style:{display:"flex",gap:10,marginBottom:14,alignItems:"center"}},
+        React.createElement('div',{style:{flex:1}},
+          React.createElement('div',{style:{fontSize:11,color:"var(--text2)",marginBottom:4}},"Amount"),
+          React.createElement('input',{type:"text",placeholder:"e.g. 100000",value:amount,onChange:e=>setAmount(e.target.value),style:{width:"100%",boxSizing:"border-box"}})
         ),
-        React.createElement('div', { style: { flex: 2 } },
-          React.createElement('div', { style: { fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 } }, "Machine"),
-          React.createElement('select', {
-            value: recipeIdx,
-            onChange: e => setRecipeIdx(Number(e.target.value)),
-            style: { width: "100%" }
-          },
-            recipes.map((r, i) =>
-              React.createElement('option', { key: i, value: i },
-                `${MACHINE_ICONS[r.machine] || "⚙"} ${r.machine} — ${r.catalyst}`)
-            )
+        React.createElement('div',{style:{flex:2}},
+          React.createElement('div',{style:{fontSize:11,color:"var(--text2)",marginBottom:4}},"Machine"),
+          React.createElement('select',{value:recipeIdx,onChange:e=>setRecipeIdx(Number(e.target.value)),style:{width:"100%"}},
+            recipes.map((r,i)=>React.createElement('option',{key:i,value:i},`${MACHINE_ICONS[r.machine]||"⚙"} ${r.machine} — ${r.catalyst}`))
           )
         )
       ),
-
-      qty > 0 && React.createElement('div', {
-        style: { background: "var(--color-background-secondary)", borderRadius: "var(--border-radius-md)", padding: "10px 12px" }
-      },
-        React.createElement('div', {
-          style: { fontSize: 11, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.07em", color: "#1D9E75", marginBottom: 8 }
-        }, "Tier 1 — direct extracts"),
-        Object.entries(recipe.outputs).map(([prod, ratio]) => {
-          // Tier-1 extraction also benefits from the buff
-          const outQty = qty * (ratio / 10000) * mult;
-          return React.createElement('div', { key: prod },
-            React.createElement('div', {
-              style: {
-                display: "flex", justifyContent: "space-between",
-                alignItems: "center", padding: "5px 0",
-                borderBottom: "0.5px solid var(--color-border-tertiary)",
-              }
-            },
-              React.createElement('span', { style: { fontSize: 13, color: "var(--color-text-primary)" } }, prod),
-              React.createElement('span', { style: { fontSize: 14, fontWeight: 500, color: "#1D9E75", fontVariantNumeric: "tabular-nums" } }, fmt(outQty))
+      qty>0&&React.createElement('div',{style:{background:"var(--bg2)",borderRadius:"var(--r-md)",padding:"10px 12px"}},
+        React.createElement('div',{style:{fontSize:11,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.07em",color:"var(--green)",marginBottom:8}},"Tier 1 — direct extracts"),
+        Object.entries(recipe.outputs).map(([prod,ratio])=>{
+          const outQty=qty*(ratio/10000)*mult;
+          return React.createElement('div',{key:prod},
+            React.createElement('div',{style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:"0.5px solid var(--border)"}},
+              React.createElement('span',{style:{fontSize:13,color:"var(--text1)"}},prod),
+              React.createElement('span',{style:{fontSize:14,fontWeight:500,color:"var(--green)",fontVariantNumeric:"tabular-nums"}},fmt(outQty))
             ),
-            React.createElement(RecipeSelect, { material: prod, qty: outQty, depth: 0 })
+            React.createElement(RecipeSelect,{material:prod,qty:outQty,depth:0})
           );
         })
       ),
-
-      qty === 0 && React.createElement('div', {
-        style: { textAlign: "center", padding: "20px 0", fontSize: 13, color: "var(--color-text-tertiary)" }
-      }, "Enter an amount above to see extraction results")
+      qty===0&&React.createElement('div',{style:{textAlign:"center",padding:"20px 0",fontSize:13,color:"var(--text3)"}},"Enter an amount above to see extraction results")
     )
   );
 }
 
-// ── Root App ──────────────────────────────────────────────────────────────────
-const BUFF_MULTIPLIERS = { none: 1, cm: 1.0845, cmo: 1.1345 };
+function ExtractionTab() {
+  return React.createElement('div',null,
+    Object.keys(RECIPES).map(ore=>React.createElement(OreCard,{key:ore,ore}))
+  );
+}
 
+// ══════════════════════════════════════════════════════
+//  REVERSE SEARCH TAB
+// ══════════════════════════════════════════════════════
+// Given a desired alloy and amount, work out how much of each intermediate
+// ingredient is needed, then trace back to what raw ores produce those ingredients
+// and the best (highest-ratio) recipe for each.
+
+function computeIngredients(alloy, amount) {
+  // Furnace yield = 35% of total input.
+  // So: total_input = desired_output / 0.35
+  // Each ingredient = total_input * (parts / sum_of_parts)
+  const recipe = REFINING_RECIPES[alloy];
+  if (!recipe) return null;
+  const totalParts = recipe.ingredients.reduce((s,[,p])=>s+p, 0);
+  const totalInput = amount / 0.35;
+  return recipe.ingredients.map(([name,parts])=>({ name, needed: totalInput * (parts / totalParts) }));
+}
+
+// Find the best ore+recipe that yields a given material (highest ratio)
+function bestSourceFor(material, allowDangerous) {
+  const index = buildExtractionIndex(allowDangerous);
+  const sources = index[material];
+  if (!sources || sources.length===0) return null;
+  return sources.reduce((best,s)=>s.ratio>best.ratio?s:best, sources[0]);
+}
+
+function ReverseSearchTab({ buffKey }) {
+  const mult = BUFF_MULTIPLIERS[buffKey];
+  const allowDangerous = useContext(DangerContext);
+  const alloys = Object.keys(REFINING_RECIPES);
+  const [alloy, setAlloy] = useState(alloys[0]);
+  const [amount, setAmount] = useState("");
+  const [result, setResult] = useState(null);
+
+  function calculate() {
+    const qty = parseFloat(amount.replace(/,/g,""));
+    if (!qty || qty<=0) return;
+
+    const ingredients = computeIngredients(alloy, qty);
+    if (!ingredients) return;
+
+    // Recursively resolve a material down to raw mineable ores.
+    // Returns a flat map: { oreName -> { oreNeeded, stacks, machine, catalyst, ratio } }
+    // visited prevents infinite loops
+    function resolveToOre(material, needed, oreAcc, visited) {
+      if (visited.has(material)) return;
+      visited.add(material);
+
+      // Is it a refining recipe (alloy)? Recurse into its sub-ingredients first.
+      if (REFINING_RECIPES[material]) {
+        const subIngredients = computeIngredients(material, needed);
+        subIngredients.forEach(({ name: subName, needed: subNeeded }) => {
+          resolveToOre(subName, subNeeded, oreAcc, new Set(visited));
+        });
+        return;
+      }
+
+      // Is it a sub-recipe product? Find best extraction source.
+      const src = bestSourceFor(material, allowDangerous);
+      if (src) {
+        const yieldPerUnit = (src.ratio / 10000) * mult;
+        const oreNeeded = needed / yieldPerUnit;
+        const oreName = src.type === "ore" ? src.ore : src.input;
+
+        // The source itself might be a sub-recipe output (e.g. Pig Iron from Blood Ore).
+        // We want the mineable ore, so recurse if the source is not a top-level ore.
+        if (src.type === "sub" && !RECIPES[src.input]) {
+          resolveToOre(src.input, oreNeeded, oreAcc, new Set(visited));
+        } else {
+          const key = oreName;
+          if (!oreAcc[key]) oreAcc[key] = { oreNeeded: 0, machine: src.machine, catalyst: src.catalyst, ratio: src.ratio };
+          oreAcc[key].oreNeeded += oreNeeded;
+          oreAcc[key].stacks = oreAcc[key].oreNeeded / 10000;
+        }
+        return;
+      }
+
+      // If material is itself a top-level ore (e.g. Saburra Powder from Saburra)
+      // check if it appears as a direct extraction output
+      // already handled above via bestSourceFor
+    }
+
+    // Build ingredient rows (for display)
+    const rows = ingredients.map(({ name, needed }) => ({ name, needed }));
+
+    // Build flat ore map by recursively resolving every ingredient
+    const oreMap = {};
+    ingredients.forEach(({ name, needed }) => {
+      resolveToOre(name, needed, oreMap, new Set());
+    });
+    // Recalculate stacks after all additions
+    Object.values(oreMap).forEach(o => { o.stacks = o.oreNeeded / 10000; });
+
+    setResult({ alloy, qty, ingredients: rows, oreMap });
+  }
+
+  return React.createElement('div',null,
+    React.createElement('div',{className:'rs-card'},
+      React.createElement('div',{style:{marginBottom:12,fontSize:13,color:"var(--text2)"}},"Input your target alloy and desired quantity. The calculator works backwards to tell you how much raw ore you need."),
+      React.createElement('div',{className:'rs-row'},
+        React.createElement('div',{className:'rs-field',style:{flex:2}},
+          React.createElement('span',{className:'rs-label'},"Target Alloy"),
+          React.createElement('select',{value:alloy,onChange:e=>setAlloy(e.target.value)},
+            alloys.map(a=>React.createElement('option',{key:a,value:a},a))
+          )
+        ),
+        React.createElement('div',{className:'rs-field',style:{flex:2}},
+          React.createElement('span',{className:'rs-label'},"Desired Amount"),
+          React.createElement('input',{type:"text",placeholder:"e.g. 10000",value:amount,onChange:e=>setAmount(e.target.value),
+            onKeyDown:e=>e.key==="Enter"&&calculate()})
+        ),
+        React.createElement('button',{className:'rs-btn',onClick:calculate},"Calculate")
+      ),
+
+      result && React.createElement('div',{className:'rs-result'},
+        // Recipe breakdown
+        React.createElement('div',{className:'rs-section-title',style:{color:"var(--blue)"}},"📋 Recipe — to make "+fmt(result.qty)+" "+result.alloy),
+        React.createElement('div',{style:{marginBottom:4,fontSize:11,color:"var(--text3)"}},
+          REFINING_RECIPES[result.alloy].ingredients.map(([n,p])=>`${p}× ${n}`).join(" + ")+" → "+result.alloy
+        ),
+
+        // Ingredients needed
+        React.createElement('div',{style:{marginTop:14}}),
+        React.createElement('div',{className:'rs-section-title',style:{color:"var(--green)"}},"🧪 Ingredients Needed"),
+        result.ingredients.map(r=>
+          React.createElement('div',{key:r.name,className:'rs-ingredient-row'},
+            React.createElement('span',null,r.name),
+            React.createElement('span',{className:'badge badge-green'},fmt(r.needed))
+          )
+        ),
+
+        // Ore sources
+        React.createElement('div',{className:'rs-ore-section'},
+          React.createElement('div',{className:'rs-section-title',style:{color:"var(--gold)"}},"⛏ Raw Mineable Ore Required"),
+          buffKey!=="none"&&React.createElement('div',{style:{fontSize:11,color:"var(--text3)",marginBottom:8}},"⚡ Buff applied: "+BUFF_MULTIPLIERS[buffKey]+" multiplier"),
+          Object.keys(result.oreMap).length === 0
+            ? React.createElement('div',{style:{fontSize:13,color:"var(--text3)",padding:"10px 0"}},"Could not trace ingredients back to mineable ores.")
+            : Object.entries(result.oreMap).map(([ore,info])=>
+                React.createElement('div',{key:ore,style:{paddingBottom:8,borderBottom:"0.5px solid var(--border)",marginBottom:8}},
+                  React.createElement('div',{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}},
+                    React.createElement('span',{style:{fontSize:14,fontWeight:500,color:"var(--text1)"}},ore),
+                    React.createElement('div',{style:{display:"flex",gap:6,alignItems:"center"}},
+                      React.createElement('span',{className:'badge badge-gold'},fmt(info.oreNeeded)+" units"),
+                      React.createElement('span',{className:'badge badge-blue'},fmt(info.stacks)+" stacks")
+                    )
+                  ),
+                  React.createElement('div',{style:{fontSize:11,color:"var(--text3)"}},
+                    `${MACHINE_ICONS[info.machine]||"⚙"} ${info.machine} · Catalyst: ${info.catalyst} · Ratio: ${(info.ratio/100).toFixed(2)}%`)
+                )
+              )
+        )
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════════════════
+//  BEST PATH TAB
+// ══════════════════════════════════════════════════════
+// Graph traversal: given a starting ore/amount and a target material,
+// find all paths through extraction + sub-recipes that lead to that target.
+
+// Build a forward graph: material -> [ {to, ratio, machine, catalyst, recipeIdx, source} ]
+function buildForwardGraph(allowDangerous) {
+  const graph = {};
+  const addEdge = (from, to, meta) => {
+    if (!allowDangerous && DANGEROUS_MACHINES.has(meta.machine)) return;
+    if (!graph[from]) graph[from] = [];
+    graph[from].push({ to, ...meta });
+  };
+  Object.entries(RECIPES).forEach(([ore, recipes]) => {
+    recipes.forEach((r, ri) => {
+      Object.entries(r.outputs).forEach(([mat, ratio]) => {
+        addEdge(ore, mat, { ratio, machine:r.machine, catalyst:r.catalyst, recipeIdx:ri });
+      });
+    });
+  });
+  Object.entries(SUB_RECIPES).forEach(([input, recipes]) => {
+    recipes.forEach((r, ri) => {
+      Object.entries(r.outputs).forEach(([mat, ratio]) => {
+        addEdge(input, mat, { ratio, machine:r.machine, catalyst:r.catalyst, recipeIdx:ri });
+      });
+    });
+  });
+  return graph;
+}
+
+// DFS to find all paths from start to target (max depth 8)
+function findAllPaths(start, target, graph, maxDepth=8) {
+  const paths = [];
+  function dfs(node, path, visited) {
+    if (path.length > maxDepth) return;
+    if (node === target) { paths.push([...path]); return; }
+    const edges = graph[node] || [];
+    edges.forEach(edge => {
+      if (!visited.has(edge.to)) {
+        visited.add(edge.to);
+        path.push(edge);
+        dfs(edge.to, path, visited);
+        path.pop();
+        visited.delete(edge.to);
+      }
+    });
+  }
+  dfs(start, [], new Set([start]));
+  return paths;
+}
+
+// Compute final yield for a path given starting qty
+function pathYield(path, startQty, mult) {
+  let qty = startQty;
+  path.forEach(edge => {
+    qty = qty * (edge.ratio / 10000) * mult;
+  });
+  return qty;
+}
+
+function BestPathTab({ buffKey }) {
+  const mult = BUFF_MULTIPLIERS[buffKey];
+  const allowDangerous = useContext(DangerContext);
+  const ores = Object.keys(RECIPES);
+  // Collect all possible targets (everything that can be produced)
+  const allTargets = [...new Set([
+    ...Object.values(RECIPES).flatMap(rs=>rs.flatMap(r=>Object.keys(r.outputs))),
+    ...Object.values(SUB_RECIPES).flatMap(rs=>rs.flatMap(r=>Object.keys(r.outputs))),
+  ])].sort();
+
+  const [ore, setOre] = useState(ores[0]);
+  const [target, setTarget] = useState("Skadite");
+  const [amount, setAmount] = useState("");
+  const [paths, setPaths] = useState(null);
+  const [selectedPath, setSelectedPath] = useState(0);
+
+  function calculate() {
+    const qty = parseFloat(amount.replace(/,/g,""));
+    if (!qty || qty<=0) return;
+    const graph = buildForwardGraph(allowDangerous);
+    const found = findAllPaths(ore, target, graph);
+    if (found.length===0) { setPaths([]); return; }
+    const scored = found.map((p,i)=>({ path:p, yield: pathYield(p,qty,mult), idx:i }))
+      .sort((a,b)=>b.yield-a.yield);
+    setPaths(scored);
+    setSelectedPath(0);
+  }
+
+  const TIER_COLORS = ["var(--green)","var(--blue)","var(--purple)","var(--gold)"];
+
+  return React.createElement('div',null,
+    React.createElement('div',{className:'bp-card'},
+      React.createElement('div',{style:{marginBottom:12,fontSize:13,color:"var(--text2)"}},"Find the most efficient route from a raw ore to any target material. All paths are shown, sorted by final yield."),
+      React.createElement('div',{className:'rs-row'},
+        React.createElement('div',{className:'rs-field',style:{flex:2}},
+          React.createElement('span',{className:'rs-label'},"Starting Ore"),
+          React.createElement('select',{value:ore,onChange:e=>setOre(e.target.value)},
+            ores.map(o=>React.createElement('option',{key:o,value:o},o))
+          )
+        ),
+        React.createElement('div',{className:'rs-field',style:{flex:2}},
+          React.createElement('span',{className:'rs-label'},"Target Material"),
+          React.createElement('select',{value:target,onChange:e=>setTarget(e.target.value)},
+            allTargets.map(t=>React.createElement('option',{key:t,value:t},t))
+          )
+        ),
+        React.createElement('div',{className:'rs-field',style:{flex:1.5}},
+          React.createElement('span',{className:'rs-label'},"Amount"),
+          React.createElement('input',{type:"text",placeholder:"e.g. 10000",value:amount,
+            onChange:e=>setAmount(e.target.value),onKeyDown:e=>e.key==="Enter"&&calculate()})
+        ),
+        React.createElement('button',{className:'rs-btn',onClick:calculate},"Find Paths")
+      ),
+
+      paths !== null && paths.length === 0 && React.createElement('div',{className:'no-path'},
+        "No path found from "+ore+" to "+target+". These materials may not be connected in the extraction chain."
+      ),
+
+      paths !== null && paths.length > 0 && React.createElement('div',null,
+        // Path selector when multiple options exist
+        paths.length > 1 && React.createElement('div',{style:{marginBottom:14}},
+          React.createElement('div',{style:{fontSize:11,textTransform:"uppercase",letterSpacing:"0.07em",color:"var(--text3)",marginBottom:8}},"Found "+paths.length+" paths — sorted by yield"),
+          React.createElement('div',{className:'path-options'},
+            paths.slice(0,5).map((p,i)=>
+              React.createElement('button',{
+                key:i, className:`path-option-btn${selectedPath===i?" selected":""}`,
+                onClick:()=>setSelectedPath(i)
+              },
+                React.createElement('div',{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
+                  React.createElement('span',{style:{fontSize:13,color:"var(--text1)"}},
+                    (i===0?"🏆 Best: ":"Path "+(i+1)+": ")+p.path.map(e=>e.to).join(" → ")),
+                  React.createElement('span',{className:'badge badge-green'},fmt(p.yield)+" "+target)
+                ),
+                React.createElement('div',{style:{fontSize:11,color:"var(--text3)",marginTop:3}},
+                  p.path.length+" steps · "+p.path.map(e=>`${MACHINE_ICONS[e.machine]||"⚙"} ${e.machine}`).join(" → "))
+              )
+            )
+          )
+        ),
+
+        // Detailed step breakdown for selected path
+        React.createElement('div',{style:{marginTop:14}},
+          React.createElement('div',{style:{fontSize:11,textTransform:"uppercase",letterSpacing:"0.07em",color:"var(--text3)",marginBottom:10}},
+            selectedPath===0&&paths.length>1?"✅ Best Path — Step by Step":"Path Details"),
+          (() => {
+            const p = paths[selectedPath];
+            let runningQty = parseFloat(amount.replace(/,/g,""))||0;
+            const steps = [];
+            steps.push({ label: ore, qty: runningQty, isSrc: true });
+            p.path.forEach((edge,i) => {
+              runningQty = runningQty * (edge.ratio/10000) * mult;
+              steps.push({ label: edge.to, qty: runningQty, machine: edge.machine, catalyst: edge.catalyst, ratio: edge.ratio, tier: i });
+            });
+            return steps.map((s,i) => {
+              if (s.isSrc) return React.createElement('div',{key:i,style:{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:"var(--bg2)",borderRadius:"var(--r-md)",marginBottom:6}},
+                React.createElement('span',{style:{fontSize:18}},MACHINE_ICONS["Crusher"]||"⛏"),
+                React.createElement('div',null,
+                  React.createElement('div',{style:{fontSize:13,fontWeight:500,color:"var(--text1)"}},s.label+" (starting ore)"),
+                  React.createElement('div',{style:{fontSize:12,color:"var(--text2)"}},fmt(s.qty)+" units")
+                )
+              );
+              return React.createElement('div',{key:i},
+                React.createElement('div',{className:'bp-arrow'},"↓"),
+                React.createElement('div',{className:`bp-step tier${Math.min(s.tier,3)}`},
+                  React.createElement('div',{className:'bp-step-num'},"S"+(i)),
+                  React.createElement('div',{className:'bp-step-body'},
+                    React.createElement('div',{className:'bp-step-title'},
+                      `${MACHINE_ICONS[s.machine]||"⚙"} ${s.machine} → `,
+                      React.createElement('span',{style:{color:TIER_COLORS[Math.min(s.tier,3)]}},s.label)
+                    ),
+                    React.createElement('div',{className:'bp-step-detail'},
+                      `Catalyst: ${s.catalyst} · Base ratio: ${s.ratio/100}%`+(buffKey!=="none"?` · With buff: ${((s.ratio/10000)*mult*100).toFixed(2)}%`:"")
+                    )
+                  ),
+                  React.createElement('span',{className:'badge badge-green',style:{whiteSpace:"nowrap"}},fmt(s.qty))
+                )
+              );
+            });
+          })()
+        ),
+        React.createElement('div',{className:'bp-final'},
+          React.createElement('div',null,
+            React.createElement('div',{style:{fontSize:11,color:"var(--text2)",marginBottom:2}},"Final output from "+fmt(parseFloat(amount.replace(/,/g,""))||0)+" "+ore),
+            React.createElement('div',{style:{fontSize:15,fontWeight:600,color:"var(--text1)"}},target)
+          ),
+          React.createElement('span',{className:'badge badge-green',style:{fontSize:15,padding:"4px 14px"}},
+            fmt(paths[selectedPath].yield)+" units")
+        )
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════════════════
+//  ROOT APP
+// ══════════════════════════════════════════════════════
 function App() {
+  const [tab, setTab] = useState("extract");
   const [buffKey, setBuffKey] = useState("none");
+  const [allowDangerous, setAllowDangerous] = useState(true);
   const mult = BUFF_MULTIPLIERS[buffKey];
 
-  return React.createElement(BuffContext.Provider, { value: mult },
-    React.createElement('div', { style: { padding: "1rem 0", maxWidth: 680, margin: "0 auto" } },
-      React.createElement('h2', { style: { fontSize: 18, fontWeight: 500, marginBottom: 4 } },
-        "Mortal Online 2 — Extraction Chain Calculator"),
-      React.createElement('p', { style: { fontSize: 13, color: "var(--color-text-secondary)", marginBottom: 16 } },
-        "Select an ore, enter your amount, pick a machine, then expand any output to process it further."),
-      React.createElement(BuffBar, { buffKey, setBuffKey }),
-      Object.keys(RECIPES).map(ore =>
-        React.createElement(OreCard, { key: ore, ore: ore })
+  const TABS = [
+    { key:"extract", label:"⛏ Extraction" },
+    { key:"reverse", label:"🔄 Reverse Search" },
+    { key:"bestpath", label:"🏆 Best Path" },
+  ];
+
+  return React.createElement(BuffContext.Provider,{value:mult},
+    React.createElement(DangerContext.Provider,{value:allowDangerous},
+      React.createElement('div',{style:{padding:"1rem 0",maxWidth:720,margin:"0 auto"}},
+        React.createElement('h2',{style:{fontSize:18,fontWeight:500,marginBottom:4}},"Mortal Online 2 — Extraction Chain Calculator"),
+        React.createElement('p',{style:{fontSize:13,color:"var(--text2)",marginBottom:16}},"Extract, refine, and plan your material chains."),
+        React.createElement('div',{className:'tabs'},
+          TABS.map(t=>React.createElement('button',{
+            key:t.key, className:`tab-btn${tab===t.key?" active":""}`,
+            onClick:()=>setTab(t.key)
+          },t.label))
+        ),
+        React.createElement(BuffBar,{buffKey,setBuffKey}),
+        React.createElement(DangerBar,{allowDangerous,setAllowDangerous}),
+        tab==="extract"  && React.createElement(ExtractionTab,null),
+        tab==="reverse"  && React.createElement(ReverseSearchTab,{buffKey}),
+        tab==="bestpath" && React.createElement(BestPathTab,{buffKey}),
       )
     )
   );
