@@ -670,30 +670,26 @@ function ReverseSearchTab({ buffKey }) {
     // Walk in mining order (biggest ore first) so chains appear grouped
     sortedMining.forEach(([oreName]) => followChain(oreName));
 
-    // ── Detect hidden dangerous-machine paths ────────────────────────────
-    // If dangerous machines are OFF, check which materials have a dangerous-machine
-    // source that either (a) produces a different/additional ore, or (b) has higher yield.
+    // ── Detect materials that have NO safe source at all ─────────────────
+    // Only warn when a dangerous machine is absolutely required —
+    // i.e. there is zero safe extraction path for that material.
     const hiddenWarnings = [];
     if (!allowDangerous) {
       Object.entries(rawNeeds).forEach(([mat]) => {
-        const safeSrc  = bestSourceFor(mat, false);
-        const dangSrc  = bestSourceFor(mat, true);
-        if (!dangSrc) return;
-        const safeOreName = safeSrc ? (safeSrc.type==="ore" ? safeSrc.ore : safeSrc.input) : null;
-        const dangOreName = dangSrc.type==="ore" ? dangSrc.ore : dangSrc.input;
-        const isDifferentOre = safeOreName !== dangOreName;
-        const isBetterYield  = !safeSrc || dangSrc.ratio > safeSrc.ratio;
-        if (isDifferentOre || isBetterYield) {
-          hiddenWarnings.push({
-            material: mat,
-            safeOre: safeOreName,
-            safeMachine: safeSrc ? safeSrc.machine : null,
-            safeRatio: safeSrc ? safeSrc.ratio : null,
-            dangOre: dangOreName,
-            dangMachine: dangSrc.machine,
-            dangRatio: dangSrc.ratio,
-          });
-        }
+        const safeSrc = bestSourceFor(mat, false);
+        if (safeSrc) return; // a safe route exists, no warning needed
+        const dangSrc = bestSourceFor(mat, true);
+        if (!dangSrc) return; // no source at all, nothing to warn about
+        const dangOreName = dangSrc.type === "ore" ? dangSrc.ore : dangSrc.input;
+        hiddenWarnings.push({
+          material: mat,
+          safeOre: null,
+          safeMachine: null,
+          safeRatio: null,
+          dangOre: dangOreName,
+          dangMachine: dangSrc.machine,
+          dangRatio: dangSrc.ratio,
+        });
       });
     }
 
