@@ -165,6 +165,26 @@
     padding: 3px 0; border-bottom: 0.5px solid var(--border); font-size: 12px;
   }
   .bp-byproduct-row:last-child { border-bottom: none; }
+
+  /* Dangerous machine warning banner */
+  .danger-warning {
+    background: #2a1a0a;
+    border: 1px solid #e05a3a;
+    border-radius: var(--r-md);
+    padding: 12px 14px;
+    margin-bottom: 14px;
+  }
+  .danger-warning-title {
+    font-size: 12px; font-weight: 600; color: #e05a3a;
+    margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .danger-warning-row {
+    font-size: 12px; color: #c8a07a;
+    padding: 3px 0; border-bottom: 0.5px solid #3a2010;
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  }
+  .danger-warning-row:last-child { border-bottom: none; }
+  .danger-warning-highlight { color: #e05a3a; font-weight: 600; }
   .no-path { text-align: center; padding: 24px; font-size: 13px; color: var(--text3); }
   .path-options { display: flex; flex-direction: column; gap: 10px; }
   .path-option-btn {
@@ -542,75 +562,168 @@ function ReverseSearchTab({ buffKey }) {
   const mult = BUFF_MULTIPLIERS[buffKey];
   const allowDangerous = useContext(DangerContext);
   const alloys = Object.keys(REFINING_RECIPES);
-  const [alloy, setAlloy] = useState(alloys[0]);
+  const [alloy, setAlloy] = useState("Steel");
   const [amount, setAmount] = useState("");
   const [result, setResult] = useState(null);
+
 
   function calculate() {
     const qty = parseFloat(amount.replace(/,/g,""));
     if (!qty || qty<=0) return;
 
-    const ingredients = computeIngredients(alloy, qty);
-    if (!ingredients) return;
+    // ── Phase A: Expand refining tree bottom-up ─────────────────────────
+    // Each entry: { output, outputQty, ingredients:[{name,needed}] }
+    const refiningSteps = [];
+    const visitedRef = new Set();
+    function expandRefining(alloyName, neededQty) {
+      if (visitedRef.has(alloyName)) return;
+      visitedRef.add(alloyName);
+      const recipe = REFINING_RECIPES[alloyName];
+      if (!recipe) return;
+      const ings = computeIngredients(alloyName, neededQty);
+      ings.forEach(({ name, needed }) => {
+        if (REFINING_RECIPES[name]) expandRefining(name, needed);
+      });
+      refiningSteps.push({ output: alloyName, outputQty: neededQty, ingredients: ings });
+    }
+    expandRefining(alloy, qty);
 
-    // Recursively resolve a material down to raw mineable ores.
-    // Returns a flat map: { oreName -> { oreNeeded, stacks, machine, catalyst, ratio } }
-    // visited prevents infinite loops
-    function resolveToOre(material, needed, oreAcc, visited) {
-      if (visited.has(material)) return;
-      visited.add(material);
-
-      // Is it a refining recipe (alloy)? Recurse into its sub-ingredients first.
-      if (REFINING_RECIPES[material]) {
-        const subIngredients = computeIngredients(material, needed);
-        subIngredients.forEach(({ name: subName, needed: subNeeded }) => {
-          resolveToOre(subName, subNeeded, oreAcc, new Set(visited));
-        });
-        return;
-      }
-
-      // Is it a sub-recipe product? Find best extraction source.
-      const src = bestSourceFor(material, allowDangerous);
-      if (src) {
-        const yieldPerUnit = (src.ratio / 10000) * mult;
-        const oreNeeded = needed / yieldPerUnit;
-        const oreName = src.type === "ore" ? src.ore : src.input;
-
-        // The source itself might be a sub-recipe output (e.g. Pig Iron from Blood Ore).
-        // We want the mineable ore, so recurse if the source is not a top-level ore.
-        if (src.type === "sub" && !RECIPES[src.input]) {
-          resolveToOre(src.input, oreNeeded, oreAcc, new Set(visited));
-        } else {
-          const key = oreName;
-          if (!oreAcc[key]) oreAcc[key] = { oreNeeded: 0, machine: src.machine, catalyst: src.catalyst, ratio: src.ratio };
-          oreAcc[key].oreNeeded += oreNeeded;
-          oreAcc[key].stacks = oreAcc[key].oreNeeded / 10000;
+    // ── Phase B: Collect raw extractable leaf materials ──────────────────
+    // rawNeeds: { materialName -> totalNeeded }
+    const rawNeeds = {};
+    refiningSteps.forEach(step => {
+      step.ingredients.forEach(({ name, needed }) => {
+        if (!REFINING_RECIPES[name]) {
+          rawNeeds[name] = (rawNeeds[name] || 0) + needed;
         }
-        return;
+      });
+    });
+
+    // ── Phase C: For each raw material, find best extraction source ──────
+    // Build: extractionMap[oreName] -> { oreNeeded, stacks, steps:[{material,needed,machine,catalyst,ratio,intermediate?}] }
+    // "intermediate" = the ore isn't directly mineable; e.g. Blood Ore comes FROM Granum
+    // We want to separate:
+    //   miningMap[rawOreName] -> total units to mine (Granum, Calx, Saburra...)
+    //   extractionStepList = ordered steps: Granum→Blood Ore, Blood Ore→Pig Iron, Calx→Calx Powder+Coal, etc.
+
+    const miningMap = {}; // raw mineable ore -> { oreNeeded, stacks }
+    const extractionStepList = []; // [{from, to, needed, machine, catalyst, ratio, isSubStep}]
+    const addedExtrSteps = new Set();
+
+    function resolveExtraction(material, needed) {
+      const src = bestSourceFor(material, allowDangerous);
+      if (!src) return;
+
+      const oreName = src.type === "ore" ? src.ore : src.input;
+      const yieldPer = (src.ratio / 10000) * mult;
+      const inputNeeded = needed / yieldPer;
+
+      // Record this extraction step (ore/sub → material)
+      const stepKey = `${oreName}->${material}`;
+      if (!addedExtrSteps.has(stepKey)) {
+        addedExtrSteps.add(stepKey);
+        extractionStepList.push({ from: oreName, to: material, needed, inputNeeded, machine: src.machine, catalyst: src.catalyst, ratio: src.ratio });
+      } else {
+        // Already added — just increase amounts
+        const existing = extractionStepList.find(s => s.from === oreName && s.to === material);
+        if (existing) { existing.needed += needed; existing.inputNeeded += inputNeeded; }
       }
 
-      // If material is itself a top-level ore (e.g. Saburra Powder from Saburra)
-      // check if it appears as a direct extraction output
-      // already handled above via bestSourceFor
+      if (src.type === "sub" && !RECIPES[src.input]) {
+        // The source is itself extracted (e.g. Blood Ore from Granum)
+        resolveExtraction(oreName, inputNeeded);
+      } else {
+        // oreName is a real mineable ore
+        if (!miningMap[oreName]) miningMap[oreName] = { oreNeeded: 0 };
+        miningMap[oreName].oreNeeded += inputNeeded;
+      }
     }
 
-    // Build ingredient rows (for display)
-    const rows = ingredients.map(({ name, needed }) => ({ name, needed }));
+    Object.entries(rawNeeds).forEach(([mat, needed]) => resolveExtraction(mat, needed));
+    Object.values(miningMap).forEach(o => { o.stacks = o.oreNeeded / 10000; });
 
-    // Build flat ore map by recursively resolving every ingredient
-    const oreMap = {};
-    ingredients.forEach(({ name, needed }) => {
-      resolveToOre(name, needed, oreMap, new Set());
+    // Sort mining by amount desc
+    const sortedMining = Object.entries(miningMap).sort((a,b) => b[1].oreNeeded - a[1].oreNeeded);
+
+    // ── Order extraction steps chain-by-chain, ore by ore ───────────────
+    // For each mineable ore (in mining order), follow the full chain:
+    //   Ore → Material → Further Processed Material → ...
+    // Build a lookup: from → [step]
+    const stepsByFrom = {};
+    extractionStepList.forEach(s => {
+      if (!stepsByFrom[s.from]) stepsByFrom[s.from] = [];
+      stepsByFrom[s.from].push(s);
     });
-    // Recalculate stacks after all additions
-    Object.values(oreMap).forEach(o => { o.stacks = o.oreNeeded / 10000; });
 
-    setResult({ alloy, qty, ingredients: rows, oreMap });
+    const orderedExtr = [];
+    const addedToOrdered = new Set();
+    function followChain(fromNode) {
+      const steps = stepsByFrom[fromNode] || [];
+      steps.forEach(s => {
+        const key = `${s.from}->${s.to}`;
+        if (addedToOrdered.has(key)) return;
+        addedToOrdered.add(key);
+        orderedExtr.push(s);
+        followChain(s.to); // follow this output further down the chain
+      });
+    }
+    // Walk in mining order (biggest ore first) so chains appear grouped
+    sortedMining.forEach(([oreName]) => followChain(oreName));
+
+    // ── Detect hidden dangerous-machine paths ────────────────────────────
+    // If dangerous machines are OFF, check which materials have a dangerous-machine
+    // source that either (a) produces a different/additional ore, or (b) has higher yield.
+    const hiddenWarnings = [];
+    if (!allowDangerous) {
+      Object.entries(rawNeeds).forEach(([mat]) => {
+        const safeSrc  = bestSourceFor(mat, false);
+        const dangSrc  = bestSourceFor(mat, true);
+        if (!dangSrc) return;
+        const safeOreName = safeSrc ? (safeSrc.type==="ore" ? safeSrc.ore : safeSrc.input) : null;
+        const dangOreName = dangSrc.type==="ore" ? dangSrc.ore : dangSrc.input;
+        const isDifferentOre = safeOreName !== dangOreName;
+        const isBetterYield  = !safeSrc || dangSrc.ratio > safeSrc.ratio;
+        if (isDifferentOre || isBetterYield) {
+          hiddenWarnings.push({
+            material: mat,
+            safeOre: safeOreName,
+            safeMachine: safeSrc ? safeSrc.machine : null,
+            safeRatio: safeSrc ? safeSrc.ratio : null,
+            dangOre: dangOreName,
+            dangMachine: dangSrc.machine,
+            dangRatio: dangSrc.ratio,
+          });
+        }
+      });
+    }
+
+    setResult({ alloy, qty, sortedMining, orderedExtr, refiningSteps, hiddenWarnings });
+  }
+
+  const STEP_COLORS = ["var(--green)","var(--blue)","var(--purple)","var(--gold)"];
+
+  function StepCard({ children, color, label, title, badge, badgeClass }) {
+    return React.createElement('div', {
+      style: {
+        background:"var(--bg1)", border:"0.5px solid var(--border)",
+        borderRadius:"var(--r-md)", padding:"12px 14px", marginBottom:8,
+        borderLeft:`3px solid ${color}`
+      }
+    },
+      React.createElement('div', { style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6} },
+        React.createElement('div', null,
+          label && React.createElement('span', { style:{fontSize:10,color:"var(--text3)",marginRight:8,textTransform:"uppercase",letterSpacing:"0.06em"} }, label),
+          React.createElement('span', { style:{fontSize:14,fontWeight:600,color:"var(--text1)"} }, title)
+        ),
+        badge && React.createElement('span', { className:`badge ${badgeClass||"badge-green"}` }, badge)
+      ),
+      children
+    );
   }
 
   return React.createElement('div',null,
     React.createElement('div',{className:'rs-card'},
-      React.createElement('div',{style:{marginBottom:12,fontSize:13,color:"var(--text2)"}},"Input your target alloy and desired quantity. The calculator works backwards to tell you how much raw ore you need."),
+      React.createElement('div',{style:{marginBottom:12,fontSize:13,color:"var(--text2)"}},"Enter your target alloy and quantity for a complete step-by-step production guide — from raw ore in the ground to finished material."),
       React.createElement('div',{className:'rs-row'},
         React.createElement('div',{className:'rs-field',style:{flex:2}},
           React.createElement('span',{className:'rs-label'},"Target Alloy"),
@@ -627,41 +740,104 @@ function ReverseSearchTab({ buffKey }) {
       ),
 
       result && React.createElement('div',{className:'rs-result'},
-        // Recipe breakdown
-        React.createElement('div',{className:'rs-section-title',style:{color:"var(--blue)"}},"📋 Recipe — to make "+fmt(result.qty)+" "+result.alloy),
-        React.createElement('div',{style:{marginBottom:4,fontSize:11,color:"var(--text3)"}},
-          REFINING_RECIPES[result.alloy].ingredients.map(([n,p])=>`${p}× ${n}`).join(" + ")+" → "+result.alloy
-        ),
 
-        // Ingredients needed
-        React.createElement('div',{style:{marginTop:14}}),
-        React.createElement('div',{className:'rs-section-title',style:{color:"var(--green)"}},"🧪 Ingredients Needed"),
-        result.ingredients.map(r=>
-          React.createElement('div',{key:r.name,className:'rs-ingredient-row'},
-            React.createElement('span',null,r.name),
-            React.createElement('span',{className:'badge badge-green'},fmt(r.needed))
+        // ── Warning: hidden dangerous-machine paths ───────────────────────
+        result.hiddenWarnings && result.hiddenWarnings.length > 0 &&
+        React.createElement('div',{className:'danger-warning'},
+          React.createElement('div',{className:'danger-warning-title'},
+            "⚠ This result is INCOMPLETE — some materials require Greater Nat or Blast Furnace"),
+          React.createElement('div',{style:{fontSize:11,color:"#c8a07a",marginBottom:8}},
+            "The following ingredients have better or different sources locked behind dangerous machines. "
+            +"Enable the toggle above to see the full recipe including those ores."),
+          result.hiddenWarnings.map(w =>
+            React.createElement('div',{key:w.material, className:'danger-warning-row'},
+              React.createElement('span',null, `→ `),
+              React.createElement('span',{className:'danger-warning-highlight'}, w.material),
+              w.safeOre
+                ? React.createElement('span',null,
+                    `currently from ${w.safeOre} (${w.safeRatio/100}%) — `,
+                    React.createElement('span',{className:'danger-warning-highlight'},
+                      `better route via ${w.dangMachine}: ${w.dangOre} (${w.dangRatio/100}%)`)
+                  )
+                : React.createElement('span',{className:'danger-warning-highlight'},
+                    `⚠ NO safe source found — requires ${w.dangMachine} from ${w.dangOre}`)
+            )
+          )
+        ),
+        React.createElement('div',{style:{marginBottom:18}},
+          React.createElement('div',{className:'rs-section-title',style:{color:"var(--gold)",fontSize:12,marginBottom:10}},
+            "⛏ PHASE 1 — MINING  (collect these ores first, biggest pile first)"),
+          result.sortedMining.map(([oreName, info], i) =>
+            React.createElement('div',{key:oreName,style:{
+              display:"flex", justifyContent:"space-between", alignItems:"center",
+              background:"var(--bg1)", border:"0.5px solid var(--border)",
+              borderRadius:"var(--r-md)", padding:"12px 16px", marginBottom:6,
+              borderLeft:`3px solid ${STEP_COLORS[Math.min(i,3)]}`
+            }},
+              React.createElement('span',{style:{fontSize:14,fontWeight:600,color:"var(--text1)"}},`⛏ Mine ${oreName}`),
+              React.createElement('div',{style:{display:"flex",gap:6}},
+                React.createElement('span',{className:'badge badge-gold'},fmt(info.oreNeeded)+" units"),
+                React.createElement('span',{className:'badge badge-blue'},fmt(info.stacks)+" stacks")
+              )
+            )
           )
         ),
 
-        // Ore sources
-        React.createElement('div',{className:'rs-ore-section'},
-          React.createElement('div',{className:'rs-section-title',style:{color:"var(--gold)"}},"⛏ Raw Mineable Ore Required"),
-          buffKey!=="none"&&React.createElement('div',{style:{fontSize:11,color:"var(--text3)",marginBottom:8}},"⚡ Buff applied: "+BUFF_MULTIPLIERS[buffKey]+" multiplier"),
-          Object.keys(result.oreMap).length === 0
-            ? React.createElement('div',{style:{fontSize:13,color:"var(--text3)",padding:"10px 0"}},"Could not trace ingredients back to mineable ores.")
-            : Object.entries(result.oreMap).map(([ore,info])=>
-                React.createElement('div',{key:ore,style:{paddingBottom:8,borderBottom:"0.5px solid var(--border)",marginBottom:8}},
-                  React.createElement('div',{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}},
-                    React.createElement('span',{style:{fontSize:14,fontWeight:500,color:"var(--text1)"}},ore),
-                    React.createElement('div',{style:{display:"flex",gap:6,alignItems:"center"}},
-                      React.createElement('span',{className:'badge badge-gold'},fmt(info.oreNeeded)+" units"),
-                      React.createElement('span',{className:'badge badge-blue'},fmt(info.stacks)+" stacks")
-                    )
-                  ),
+        // ── PHASE 2: Extraction steps ─────────────────────────────────────
+        result.orderedExtr.length > 0 &&
+        React.createElement('div',{style:{marginBottom:18}},
+          React.createElement('div',{className:'rs-section-title',style:{color:"var(--green)",fontSize:12,marginBottom:10}},
+            "⚙ PHASE 2 — EXTRACTION  (process your ores, chain by chain)"),
+          (() => {
+            // Insert a subtle ore-group divider whenever the root ore changes
+            const elements = [];
+            let currentRootOre = null;
+            let colorIdx = 0;
+            result.orderedExtr.forEach((s, i) => {
+              // Determine root ore: if "from" is a mineable ore it's the root; otherwise keep current
+              const isRootStep = !!RECIPES[s.from];
+              if (isRootStep && s.from !== currentRootOre) {
+                currentRootOre = s.from;
+                colorIdx = result.sortedMining.findIndex(([o]) => o === s.from);
+                if (colorIdx < 0) colorIdx = i;
+                if (i > 0) elements.push(React.createElement('div',{key:'div-'+s.from,style:{height:6}}));
+              }
+              const color = STEP_COLORS[Math.min(colorIdx, 3)];
+              const badgeClass = isRootStep ? "badge-green" : "badge-blue";
+              elements.push(
+                React.createElement(StepCard,{key:s.from+"->"+s.to, color,
+                  title:`${s.from} → ${s.to}`,
+                  badge:fmt(s.needed)+" "+s.to, badgeClass},
                   React.createElement('div',{style:{fontSize:11,color:"var(--text3)"}},
-                    `${MACHINE_ICONS[info.machine]||"⚙"} ${info.machine} · Catalyst: ${info.catalyst} · Ratio: ${(info.ratio/100).toFixed(2)}%`)
+                    `${MACHINE_ICONS[s.machine]||"⚙"} ${s.machine} · Catalyst: ${s.catalyst} · Yield: ${(s.ratio/100).toFixed(2)}%`
+                    +(buffKey!=="none"?` (×${BUFF_MULTIPLIERS[buffKey]} buffed)`:"")),
+                  React.createElement('div',{style:{fontSize:11,color:"var(--text2)",marginTop:4}},
+                    `Input: ${fmt(s.inputNeeded)} ${s.from}`)
+                )
+              );
+            });
+            return elements;
+          })()
+        ),
+
+        // ── PHASE 3: Refining steps ───────────────────────────────────────
+        React.createElement('div',null,
+          React.createElement('div',{className:'rs-section-title',style:{color:"var(--blue)",fontSize:12,marginBottom:10}},
+            "🔥 PHASE 3 — REFINING  (combine in furnace, follow in order)"),
+          result.refiningSteps.map((step, i) =>
+            React.createElement(StepCard,{key:step.output,color:STEP_COLORS[Math.min(i,3)],
+              label:"Step "+(i+1), title:`Refine → ${step.output}`,
+              badge:fmt(step.outputQty)+" "+step.output, badgeClass:"badge-green"},
+              React.createElement('div',{style:{fontSize:11,color:"var(--text3)",marginBottom:6}},
+                "Furnace (35% yield): "+step.ingredients.map(ing=>`${fmt(ing.needed)} ${ing.name}`).join(" + ")),
+              step.ingredients.map(ing=>
+                React.createElement('div',{key:ing.name,style:{display:"flex",justifyContent:"space-between",fontSize:12,padding:"2px 0",borderBottom:"0.5px solid var(--border)"}},
+                  React.createElement('span',{style:{color:"var(--text2)"}},ing.name),
+                  React.createElement('span',{className:'badge badge-blue'},fmt(ing.needed))
                 )
               )
+            )
+          )
         )
       )
     )
@@ -739,7 +915,7 @@ function BestPathTab({ buffKey }) {
     ...Object.values(SUB_RECIPES).flatMap(rs=>rs.flatMap(r=>Object.keys(r.outputs))),
   ])].sort();
 
-  const [ore, setOre] = useState(ores[0]);
+  const [ore, setOre] = useState("Calx");
   const [target, setTarget] = useState("Skadite");
   const [amount, setAmount] = useState("");
   const [paths, setPaths] = useState(null);
@@ -926,12 +1102,12 @@ function BestPathTab({ buffKey }) {
 function App() {
   const [tab, setTab] = useState("extract");
   const [buffKey, setBuffKey] = useState("none");
-  const [allowDangerous, setAllowDangerous] = useState(true);
+  const [allowDangerous, setAllowDangerous] = useState(false);
   const mult = BUFF_MULTIPLIERS[buffKey];
 
   const TABS = [
     { key:"extract", label:"⛏ Extraction" },
-    { key:"reverse", label:"🔄 Reverse Search" },
+    { key:"reverse", label:"🔥 Refining" },
     { key:"bestpath", label:"🏆 Best Path" },
   ];
 
