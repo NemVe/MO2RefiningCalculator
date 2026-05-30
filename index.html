@@ -201,6 +201,7 @@
 const { useState, useContext, createContext, useCallback } = React;
 const BuffContext = createContext(1);
 const DangerContext = createContext(true); // true = has access to dangerous machines
+const KimuriteContext = createContext(false); // false = Kimurite route OFF by default (high-risk ore)
 const DANGEROUS_MACHINES = new Set(["Blast Furnace", "Greater Nat"]);
 // Materials available for direct purchase from in-game vendors — skip extraction entirely
 const VENDOR_MATERIALS = new Set(["Calamine"]);
@@ -351,10 +352,13 @@ const REFINING_RECIPES = {
 
 // For the reverse search, we need to know which ore + recipe yields each ingredient.
 // Build a lookup: material -> list of { ore, recipeIdx, ratio (per 10000 of ore) }
-function buildExtractionIndex(allowDangerous) {
+function buildExtractionIndex(allowDangerous, allowKimurite) {
   const idx = {};
   const addEntry = (material, source) => {
     if (!allowDangerous && DANGEROUS_MACHINES.has(source.machine)) return;
+    // Skip Kimurite as a source ore when the Kimurite route is disabled
+    const sourceOre = source.type === "ore" ? source.ore : source.input;
+    if (!allowKimurite && sourceOre === "Kimurite") return;
     if (!idx[material]) idx[material] = [];
     idx[material].push(source);
   };
@@ -417,7 +421,7 @@ function BuffBar({ buffKey, setBuffKey }) {
   );
 }
 
-function DangerBar({ allowDangerous, setAllowDangerous }) {
+function DangerBar({ allowDangerous, setAllowDangerous, allowKimurite, setAllowKimurite }) {
   return React.createElement('div', { className:'danger-bar' },
     React.createElement('span', { className:'danger-label' }, "☠ Machines"),
     React.createElement('button', {
@@ -433,7 +437,23 @@ function DangerBar({ allowDangerous, setAllowDangerous }) {
     ),
     React.createElement('span', {
       style: { fontSize:11, color: allowDangerous ? "#e05a3a" : "var(--green)", marginLeft:"auto", fontWeight:500 }
-    }, allowDangerous ? "⚠ High-yield dangerous machines included" : "✓ Safe machines only")
+    }, allowDangerous ? "⚠ High-yield dangerous machines included" : "✓ Safe machines only"),
+    React.createElement('div', { style:{ width:"100%", height:"0.5px", background:"var(--border)", margin:"6px 0" } }),
+    React.createElement('span', { className:'danger-label' }, "💀 Kimurite"),
+    React.createElement('button', {
+      className: `danger-toggle ${allowKimurite ? 'on' : 'off'}`,
+      onClick: () => setAllowKimurite(v => !v),
+    },
+      React.createElement('div', { className:'tog-track' },
+        React.createElement('div', { className:'tog-knob' })
+      ),
+      allowKimurite
+        ? "Kimurite route enabled (high-risk ore)"
+        : "Kimurite route disabled (safer alternatives used)",
+    ),
+    React.createElement('span', {
+      style: { fontSize:11, color: allowKimurite ? "#e05a3a" : "var(--green)", marginLeft:"auto", fontWeight:500 }
+    }, allowKimurite ? "⚠ Kimurite path included" : "✓ Kimurite-free route")
   );
 }
 // ══════════════════════════════════════════════════════
@@ -553,8 +573,8 @@ function computeIngredients(alloy, amount) {
 }
 
 // Find the best ore+recipe that yields a given material (highest ratio)
-function bestSourceFor(material, allowDangerous) {
-  const index = buildExtractionIndex(allowDangerous);
+function bestSourceFor(material, allowDangerous, allowKimurite) {
+  const index = buildExtractionIndex(allowDangerous, allowKimurite);
   const sources = index[material];
   if (!sources || sources.length===0) return null;
   return sources.reduce((best,s)=>s.ratio>best.ratio?s:best, sources[0]);
@@ -563,6 +583,7 @@ function bestSourceFor(material, allowDangerous) {
 function ReverseSearchTab({ buffKey }) {
   const mult = BUFF_MULTIPLIERS[buffKey];
   const allowDangerous = useContext(DangerContext);
+  const allowKimurite = useContext(KimuriteContext);
   const alloys = Object.keys(REFINING_RECIPES);
   const [alloy, setAlloy] = useState("Steel");
   const [amount, setAmount] = useState("");
@@ -619,7 +640,7 @@ function ReverseSearchTab({ buffKey }) {
     const addedExtrSteps = new Set();
 
     function resolveExtraction(material, needed) {
-      const src = bestSourceFor(material, allowDangerous);
+      const src = bestSourceFor(material, allowDangerous, allowKimurite);
       if (!src) return;
 
       const oreName = src.type === "ore" ? src.ore : src.input;
@@ -684,9 +705,9 @@ function ReverseSearchTab({ buffKey }) {
     const hiddenWarnings = [];
     if (!allowDangerous) {
       Object.entries(rawNeeds).forEach(([mat]) => {
-        const safeSrc = bestSourceFor(mat, false);
+        const safeSrc = bestSourceFor(mat, false, allowKimurite);
         if (safeSrc) return; // a safe route exists, no warning needed
-        const dangSrc = bestSourceFor(mat, true);
+        const dangSrc = bestSourceFor(mat, true, allowKimurite);
         if (!dangSrc) return; // no source at all, nothing to warn about
         const dangOreName = dangSrc.type === "ore" ? dangSrc.ore : dangSrc.input;
         hiddenWarnings.push({
@@ -831,8 +852,15 @@ function ReverseSearchTab({ buffKey }) {
                   title:`${s.from} → ${s.to}`,
                   badge:fmt(s.needed)+" "+s.to, badgeClass},
                   React.createElement('div',{style:{fontSize:11,color:"var(--text3)"}},
-                    `${MACHINE_ICONS[s.machine]||"⚙"} ${s.machine} · Catalyst: ${s.catalyst} · Yield: ${(s.ratio/100).toFixed(2)}%`
-                    +(buffKey!=="none"?` (×${BUFF_MULTIPLIERS[buffKey]} buffed)`:"")),
+                    (() => {
+                      const stacks = s.inputNeeded / 10000;
+                      const catMatch = s.catalyst.match(/^(.+?)\s*\((\d+)\)$/);
+                      const catStr = catMatch
+                        ? `${catMatch[1]}: ${fmt(stacks * Number(catMatch[2]))} (${catMatch[2]}/stack)`
+                        : `Catalyst: ${s.catalyst}`;
+                      return `${MACHINE_ICONS[s.machine]||"⚙"} ${s.machine} · ${catStr} · Yield: ${(s.ratio/100).toFixed(2)}%`
+                        +(buffKey!=="none"?` (×${BUFF_MULTIPLIERS[buffKey]} buffed)`:"");
+                    })()),
                   React.createElement('div',{style:{fontSize:11,color:"var(--text2)",marginTop:4}},
                     `Input: ${fmt(s.inputNeeded)} ${s.from}`)
                 )
@@ -873,10 +901,11 @@ function ReverseSearchTab({ buffKey }) {
 // find all paths through extraction + sub-recipes that lead to that target.
 
 // Build a forward graph: material -> [ {to, ratio, machine, catalyst, recipeIdx, source} ]
-function buildForwardGraph(allowDangerous) {
+function buildForwardGraph(allowDangerous, allowKimurite) {
   const graph = {};
   const addEdge = (from, to, meta) => {
     if (!allowDangerous && DANGEROUS_MACHINES.has(meta.machine)) return;
+    if (!allowKimurite && from === "Kimurite") return;
     if (!graph[from]) graph[from] = [];
     graph[from].push({ to, ...meta });
   };
@@ -930,6 +959,7 @@ function pathYield(path, startQty, mult) {
 function BestPathTab({ buffKey }) {
   const mult = BUFF_MULTIPLIERS[buffKey];
   const allowDangerous = useContext(DangerContext);
+  const allowKimurite = useContext(KimuriteContext);
   const ores = Object.keys(RECIPES);
   // Collect all possible targets (everything that can be produced)
   const allTargets = [...new Set([
@@ -946,7 +976,7 @@ function BestPathTab({ buffKey }) {
   function calculate() {
     const qty = parseFloat(amount.replace(/,/g,""));
     if (!qty || qty<=0) return;
-    const graph = buildForwardGraph(allowDangerous);
+    const graph = buildForwardGraph(allowDangerous, allowKimurite);
     const found = findAllPaths(ore, target, graph);
     if (found.length===0) { setPaths([]); return; }
 
@@ -1125,6 +1155,7 @@ function App() {
   const [tab, setTab] = useState("extract");
   const [buffKey, setBuffKey] = useState("none");
   const [allowDangerous, setAllowDangerous] = useState(false);
+  const [allowKimurite, setAllowKimurite] = useState(false);
   const mult = BUFF_MULTIPLIERS[buffKey];
 
   const TABS = [
@@ -1135,6 +1166,7 @@ function App() {
 
   return React.createElement(BuffContext.Provider,{value:mult},
     React.createElement(DangerContext.Provider,{value:allowDangerous},
+    React.createElement(KimuriteContext.Provider,{value:allowKimurite},
       React.createElement('div',{style:{padding:"1rem 0",maxWidth:720,margin:"0 auto"}},
         React.createElement('h2',{style:{fontSize:18,fontWeight:500,marginBottom:4}},"Mortal Online 2 — Extraction Chain Calculator"),
         React.createElement('p',{style:{fontSize:13,color:"var(--text2)",marginBottom:16}},"Extract, refine, and plan your material chains."),
@@ -1145,12 +1177,12 @@ function App() {
           },t.label))
         ),
         React.createElement(BuffBar,{buffKey,setBuffKey}),
-        React.createElement(DangerBar,{allowDangerous,setAllowDangerous}),
+        React.createElement(DangerBar,{allowDangerous,setAllowDangerous,allowKimurite,setAllowKimurite}),
         tab==="extract"  && React.createElement(ExtractionTab,null),
         tab==="reverse"  && React.createElement(ReverseSearchTab,{buffKey}),
         tab==="bestpath" && React.createElement(BestPathTab,{buffKey}),
       )
-    )
+    ))
   );
 }
 
