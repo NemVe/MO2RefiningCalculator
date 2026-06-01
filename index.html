@@ -666,7 +666,7 @@ function bestSourceFor(material, allowDangerous, allowKimurite) {
   return sources.reduce((best,s)=>s.ratio>best.ratio?s:best, sources[0]);
 }
 
-function computeReverseResult(alloy, qty, allowDangerous, allowKimurite, mult, buffKey) {
+function computeReverseResult(alloy, qty, allowDangerous, allowKimurite, mult, buffKey, ownedMaterials = new Set()) {
   // expand refining tree
   const refiningSteps = [];
   const visitedRef = new Set();
@@ -676,18 +676,27 @@ function computeReverseResult(alloy, qty, allowDangerous, allowKimurite, mult, b
     const recipe = REFINING_RECIPES[alloyName];
     if (!recipe) return;
     const ings = computeIngredients(alloyName, neededQty, buffKey);
-    ings.forEach(({ name, needed }) => { if (REFINING_RECIPES[name]) expandRefining(name, needed); });
+    ings.forEach(({ name, needed }) => {
+      // Only recurse into sub-alloys that the player doesn't already own
+      if (REFINING_RECIPES[name] && !ownedMaterials.has(name)) expandRefining(name, needed);
+    });
     refiningSteps.push({ output: alloyName, outputQty: neededQty, ingredients: ings });
   }
   expandRefining(alloy, qty);
+  // Remove refining steps for alloys the player already owns
+  const filteredRefiningSteps = refiningSteps.filter(s => !ownedMaterials.has(s.output));
 
-  const rawNeeds = {}, vendorNeeds = {};
+  const rawNeeds = {}, vendorNeeds = {}, collectedNeeds = {};
   refiningSteps.forEach(step => {
     step.ingredients.forEach(({ name, needed }) => {
-      if (!REFINING_RECIPES[name]) {
+      if (ownedMaterials.has(name)) {
+        // Player already has this alloy — collect from dungeon/loot, skip its extraction chain
+        collectedNeeds[name] = (collectedNeeds[name]||0) + needed;
+      } else if (!REFINING_RECIPES[name]) {
         if (VENDOR_MATERIALS.has(name)) vendorNeeds[name] = (vendorNeeds[name]||0)+needed;
         else rawNeeds[name] = (rawNeeds[name]||0)+needed;
       }
+      // if REFINING_RECIPES[name] and NOT owned, its ingredients were already expanded recursively
     });
   });
 
@@ -746,7 +755,7 @@ function computeReverseResult(alloy, qty, allowDangerous, allowKimurite, mult, b
     });
   }
 
-  return { sortedMining, orderedExtr, refiningSteps, hiddenWarnings, vendorNeeds };
+  return { sortedMining, orderedExtr, refiningSteps: filteredRefiningSteps, hiddenWarnings, vendorNeeds, collectedNeeds };
 }
 
 // ── Collapsible section component ────────────────────────────────────────────
@@ -784,7 +793,7 @@ function StepCard({ children, color, label, title, badge, badgeClass }) {
 }
 
 // ── Guide sections renderer (shared by alloy + extraction paths) ──────────────
-function GuideContent({ sortedMining, orderedExtr, refiningSteps, hiddenWarnings, vendorNeeds, buffKey }) {
+function GuideContent({ sortedMining, orderedExtr, refiningSteps, hiddenWarnings, vendorNeeds, collectedNeeds, buffKey }) {
   const allowDangerous = useContext(DangerContext);
   return React.createElement('div', null,
     // Warning
@@ -812,6 +821,26 @@ function GuideContent({ sortedMining, orderedExtr, refiningSteps, hiddenWarnings
             React.createElement('span',{className:'badge badge-gold'},fmt(info.oreNeeded)+" units"),
             React.createElement('span',{className:'badge badge-blue'},fmt(info.stacks)+" stacks")
           )
+        )
+      )
+    ),
+
+    // Collected (owned by player — dungeon/loot)
+    collectedNeeds && Object.keys(collectedNeeds).length > 0 && React.createElement(CollapsibleSection,{
+      title:"🎒 Collected Materials", color:"#c9a227", count:Object.keys(collectedNeeds).length
+    },
+      Object.entries(collectedNeeds).map(([mat,needed])=>
+        React.createElement('div',{key:mat,style:{
+          display:"flex",justifyContent:"space-between",alignItems:"center",
+          background:"var(--bg2)",border:"0.5px solid var(--border)",
+          borderRadius:"var(--r-md)",padding:"10px 14px",marginBottom:6,
+          borderLeft:"3px solid #c9a227"
+        }},
+          React.createElement('div',null,
+            React.createElement('span',{style:{fontSize:13,fontWeight:600,color:"var(--text1)"}},`🎒 ${mat}`),
+            React.createElement('span',{style:{fontSize:11,color:"var(--text3)",marginLeft:8}},"from dungeons / loot")
+          ),
+          React.createElement('span',{className:'badge badge-gold'},fmt(needed)+" units")
         )
       )
     ),
@@ -935,6 +964,7 @@ function RefiningExtractionTab({ buffKey }) {
   const [result,    setResult]    = useState(null);
   const [pathIdx,   setPathIdx]   = useState(0);
   const [oreFilter, setOreFilter] = useState(null); // null = show all ores
+  const [ownedMaterials, setOwnedMaterials] = useState([]); // materials player already has (array for React dep tracking)
 
   // Auto-recalculate when filters or buff change, but only if a result already exists
   useEffect(() => {
@@ -942,7 +972,7 @@ function RefiningExtractionTab({ buffKey }) {
     const qty = parseFloat(amount.replace(/,/g,""));
     if (!qty || qty <= 0) return;
     calculate();
-  }, [allowDangerous, allowKimurite, buffKey]);
+  }, [allowDangerous, allowKimurite, buffKey, ownedMaterials]);
 
   // ALL possible targets: alloys first, then pure extraction targets
   const alloyTargets = Object.keys(REFINING_RECIPES);
@@ -957,7 +987,7 @@ function RefiningExtractionTab({ buffKey }) {
 
     if (isAlloy) {
       // Alloy mode: single deterministic guide from reverse-search
-      const guide = computeReverseResult(target, qty, allowDangerous, allowKimurite, mult, buffKey);
+      const guide = computeReverseResult(target, qty, allowDangerous, allowKimurite, mult, buffKey, new Set(ownedMaterials));
       // Byproducts = everything produced during extraction that isn't an alloy ingredient
       // (just collect from extraction steps)
       const bp = {};
@@ -1031,7 +1061,7 @@ function RefiningExtractionTab({ buffKey }) {
       React.createElement('div', { className:"rs-row" },
         React.createElement('div', { className:"rs-field", style:{flex:2} },
           React.createElement('span', { className:"rs-label" }, "Target Material"),
-          React.createElement('select', { value:target, onChange:e=>{ setTarget(e.target.value); setResult(null); setOreFilter(null); setPathIdx(0); } },
+          React.createElement('select', { value:target, onChange:e=>{ setTarget(e.target.value); setResult(null); setOreFilter(null); setPathIdx(0); setOwnedMaterials([]); } },
             React.createElement('optgroup', { label:"Alloys" },
               alloyTargets.map(a=>React.createElement('option',{key:a,value:a},a))
             ),
@@ -1048,7 +1078,51 @@ function RefiningExtractionTab({ buffKey }) {
           )
         ),
         React.createElement('button', { className:"rs-btn", onClick:calculate }, "Calculate")
-      )
+      ),
+
+      // ── Owned materials toggles (skip extraction for these) ────────────
+      (() => {
+        // Find all refining alloys that are direct ingredients in this target's recipe chain
+        // e.g. for Steel: Grain Steel is a sub-alloy ingredient
+        // Only Grain Steel can be directly collected from dungeons
+        const DUNGEON_COLLECTABLES = new Set(["Grain Steel"]);
+        const ownableIngredients = [];
+        const visited = new Set();
+        function findOwnableIngs(alloyName) {
+          if (visited.has(alloyName)) return;
+          visited.add(alloyName);
+          const recipe = REFINING_RECIPES[alloyName];
+          if (!recipe) return;
+          recipe.ingredients.forEach(([name]) => {
+            if (REFINING_RECIPES[name] && DUNGEON_COLLECTABLES.has(name)) {
+              if (!ownableIngredients.includes(name)) ownableIngredients.push(name);
+            }
+            if (REFINING_RECIPES[name]) findOwnableIngs(name);
+          });
+        }
+        if (REFINING_RECIPES[target]) findOwnableIngs(target);
+        if (ownableIngredients.length === 0) return null;
+        return React.createElement('div',{style:{marginTop:10,paddingTop:10,borderTop:"0.5px solid var(--border)"}},
+          React.createElement('div',{style:{fontSize:11,color:"var(--text3)",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.06em"}},"Start from Grain Steel?"),
+          React.createElement('div',{style:{display:"flex",gap:6,flexWrap:"wrap"}},
+            ownableIngredients.map(mat => {
+              const owned = ownedMaterials.includes(mat);
+              return React.createElement('button',{
+                key:mat,
+                onClick:()=>setOwnedMaterials(prev=>
+                  owned ? prev.filter(m=>m!==mat) : [...prev, mat]
+                ),
+                style:{
+                  padding:"5px 12px",borderRadius:20,fontSize:12,fontWeight:500,cursor:"pointer",
+                  border:`1px solid ${owned?"#c9a227":"var(--border)"}`,
+                  background: owned ? "#2a2010" : "var(--bg2)",
+                  color: owned ? "#c9a227" : "var(--text3)",
+                }
+              }, owned ? `✓ Have ${mat}` : `+ Have ${mat}`)
+            })
+          )
+        );
+      })()
     ),
 
     // No paths
@@ -1081,7 +1155,7 @@ function RefiningExtractionTab({ buffKey }) {
     // Alloy result
     result && result.mode === "alloy" && React.createElement('div', null,
       React.createElement(ResultHero, { target:result.target, targetQty:result.qty, byproducts:result.byproducts }),
-      React.createElement(GuideContent, { ...result.guide, buffKey })
+      React.createElement(GuideContent, { ...result.guide, buffKey, collectedNeeds: result.guide.collectedNeeds||{} })
     ),
 
     // Extraction path result
@@ -1175,7 +1249,7 @@ function RefiningExtractionTab({ buffKey }) {
         // Fix from: each step's from is previous step's to
         for (let i=1; i<orderedExtr.length; i++) orderedExtr[i].from = orderedExtr[i-1].to;
 
-        return React.createElement(GuideContent, { sortedMining, orderedExtr, refiningSteps:[], hiddenWarnings:[], vendorNeeds:{}, buffKey });
+        return React.createElement(GuideContent, { sortedMining, orderedExtr, refiningSteps:[], hiddenWarnings:[], vendorNeeds:{}, collectedNeeds:{}, buffKey });
       })()
     )
   );
@@ -1223,7 +1297,7 @@ root.render(React.createElement(App));
   <span class="sep">|</span>
   <span class="dim">By <span class="val">Suu</span></span>
   <span class="sep">·</span>
-  <span class="dim">Contributors: <span class="val">Msma, Viscount</span></span>
+  <span class="dim">Contributors: <span class="val">Msma, Viscount, Citadel</span></span>
   <span class="sep">|</span>
   <span class="dim">Sources:</span>
   <span class="val">Norsca Rock Bible</span>
