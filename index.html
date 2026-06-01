@@ -324,9 +324,6 @@ const SUB_RECIPES = {
     { catalyst:"Calx Powder (715)", machine:"Blast Furnace", outputs:{ Almine:400, Acronite:800, Electrum:2720, Calamine:2040 } },
     { catalyst:"Calx Powder (715)", machine:"Greater Nat", outputs:{ Almine:2000, Acronite:160, Electrum:2720, Calamine:3400 } },
   ],
-  Azurite: [
-    { catalyst:"Fuming Salt (315)", machine:"Fabricula", outputs:{ Cuprite:300 } },
-  ],
 };
 
 // Refining recipes from the image (ratio stored as parts: [ingredient, parts])
@@ -346,6 +343,31 @@ const REFINING_RECIPES = {
 
 // For the reverse search, we need to know which ore + recipe yields each ingredient.
 // Build a lookup: material -> list of { ore, recipeIdx, ratio (per 10000 of ore) }
+
+// Returns true if using Coke/Rock Oil for a from→to step is a meaningful practical tradeoff,
+// meaning there exists a higher-yield option that does NOT use a practical catalyst.
+// If ALL top options already use Coke/Rock Oil, it's not a tradeoff — don't flag it.
+function isStepPractical(fromNode, toMat, catalyst, allowDangerous) {
+  const cn = parseCatalystName(catalyst);
+  if (cn !== "Rock Oil" && cn !== "Coke") return false;
+  const srcRecs = [...(RECIPES[fromNode]||[]), ...(SUB_RECIPES[fromNode]||[])];
+  const options = srcRecs.filter(r =>
+    r.outputs[toMat] !== undefined &&
+    !RARE_CATALYSTS.has(parseCatalystName(r.catalyst)) &&
+    (!allowDangerous ? !DANGEROUS_MACHINES.has(r.machine) : true)
+  );
+  if (options.length <= 1) return false;
+  const bestRatio = Math.max(...options.map(r => r.outputs[toMat]));
+  // Check if ALL options at best ratio use a practical catalyst
+  // If even ONE top option uses a non-practical catalyst, flagging is meaningful
+  const topOptions = options.filter(r => r.outputs[toMat] === bestRatio);
+  const allTopArePractical = topOptions.every(r => {
+    const c = parseCatalystName(r.catalyst);
+    return c === "Rock Oil" || c === "Coke";
+  });
+  return !allTopArePractical;
+}
+
 // Catalysts that are too rare/expensive to use in auto-routing
 const RARE_CATALYSTS = new Set(["Glimmer Powder"]);
 
@@ -805,23 +827,7 @@ function GuideContent({ sortedMining, orderedExtr, refiningSteps, hiddenWarnings
           }
           const color = STEP_COLORS[Math.min(colorIdx,3)];
           const catName = parseCatalystName(s.catalyst);
-          const isPractical = (catName === "Rock Oil" || catName === "Coke") && (() => {
-            const allRecs = [...(RECIPES[s.from]||[]), ...(SUB_RECIPES[s.from]||[])];
-            const options = allRecs.filter(r =>
-              r.outputs[s.to] !== undefined &&
-              !RARE_CATALYSTS.has(parseCatalystName(r.catalyst)) &&
-              (!allowDangerous ? !DANGEROUS_MACHINES.has(r.machine) : true)
-            );
-            if (options.length <= 1) return false;
-            // Find the highest-yield option
-            const bestRatio = Math.max(...options.map(r => r.outputs[s.to]));
-            const bestRec = options.find(r => r.outputs[s.to] === bestRatio);
-            const bestCatName = parseCatalystName(bestRec.catalyst);
-            // Only flag practical if the best option does NOT already use a practical catalyst
-            // (regardless of which machine it uses)
-            const bestIsPractical = bestCatName === "Rock Oil" || bestCatName === "Coke";
-            return !bestIsPractical;
-          })();
+          const isPractical = isStepPractical(s.from, s.to, s.catalyst, allowDangerous);
           const catStr = (() => {
             const cat = catalystNeeded(s.catalyst, s.inputNeeded, buffKey);
             if (cat && cat.qty > 0) {
@@ -1104,21 +1110,10 @@ function RefiningExtractionTab({ buffKey }) {
               const globalIdx = result.scored.indexOf(p);
               const bpCount = Object.values(p.byproducts).filter(v=>v>0).length;
               const isOverall = result.scored[0] === p;
-              const hasPractical = !isOverall && p.path.some(edge => {
-                const cn = parseCatalystName(edge.catalyst);
-                if (cn !== "Rock Oil" && cn !== "Coke") return false;
-                // Check if the best-yield option for this step already uses a practical catalyst
-                const allRecs = Object.values(SUB_RECIPES).flat().concat(Object.values(RECIPES).flat());
-                const options = allRecs.filter(r =>
-                  r.outputs[edge.to] !== undefined &&
-                  !RARE_CATALYSTS.has(parseCatalystName(r.catalyst)) &&
-                  (!allowDangerous ? !DANGEROUS_MACHINES.has(r.machine) : true)
-                );
-                if (options.length <= 1) return false;
-                const bestRatio = Math.max(...options.map(r => r.outputs[edge.to]));
-                const bestCat = parseCatalystName(options.find(r => r.outputs[edge.to] === bestRatio).catalyst);
-                return bestCat !== "Rock Oil" && bestCat !== "Coke";
-              });
+              const fromNodes = [p.ore, ...p.path.slice(0,-1).map(e=>e.to)];
+              const hasPractical = !isOverall && p.path.some((edge, ei) =>
+                isStepPractical(fromNodes[ei], edge.to, edge.catalyst, allowDangerous)
+              );
               const label = isOverall
                 ? `🏆 Optimal (${p.ore})`
                 : hasPractical
