@@ -159,6 +159,8 @@
   .path-tab-btn.active { background: var(--info-bg); border-color: var(--blue); color: var(--blue); }
   .path-tab-btn.best  { border-color: #1D9E7566; }
   .path-tab-btn.best.active { background: #0d1a10; border-color: var(--green); color: var(--green); }
+  .path-tab-btn.practical { border-color: #378ADD66; }
+  .path-tab-btn.practical.active { background: #0d1520; border-color: var(--blue); color: var(--blue); }
 
   /* Collapsible section */
   .section-toggle {
@@ -344,13 +346,16 @@ const REFINING_RECIPES = {
 
 // For the reverse search, we need to know which ore + recipe yields each ingredient.
 // Build a lookup: material -> list of { ore, recipeIdx, ratio (per 10000 of ore) }
+// Catalysts that are too rare/expensive to use in auto-routing
+const RARE_CATALYSTS = new Set(["Glimmer Powder"]);
+
 function buildExtractionIndex(allowDangerous, allowKimurite) {
   const idx = {};
   const addEntry = (material, source) => {
     if (!allowDangerous && DANGEROUS_MACHINES.has(source.machine)) return;
-    // Skip Kimurite as a source ore when the Kimurite route is disabled
     const sourceOre = source.type === "ore" ? source.ore : source.input;
     if (!allowKimurite && sourceOre === "Kimurite") return;
+    if (RARE_CATALYSTS.has(parseCatalystName(source.catalyst))) return;
     if (!idx[material]) idx[material] = [];
     idx[material].push(source);
   };
@@ -385,7 +390,53 @@ const TIER_STYLE = [
   { bg:"var(--bg1)", accent:"#378ADD" },
   { bg:"var(--bg2)", accent:"#7F77DD" },
 ];
-const BUFF_MULTIPLIERS = { none:1, cm:1.0845, cmo:1.1345 };
+const BUFF_MULTIPLIERS = { none:1, cm:1.09, cmo:1.14 };
+
+// Catalyst cost per 10k ore (from Junne's table). Used to show catalyst quantities.
+// Values are base per-10k amounts; with OGH Clade (+3%) multiply by 1.03 and ceil.
+const CATALYST_PER_10K = {
+  "None": 0,
+  "Bor": 715,
+  "Butter": 500,
+  "Calamine": 772,
+  "Calx Powder": 715,
+  "Coal": 525,
+  "Coke": 385,
+  "Corn Oil": 500,
+  "Dragon Salt": 187,
+  "Fuming Salt": 315,
+  "Horn Pepper Oil": 422,
+  "Ichor": 660,
+  "Nitre": 626,
+  "Palm Oil": 422,
+  "Purified Water": 10000,
+  "Rock Oil": 417,
+  "Salt": 528,
+  "Shimmering Solution": 5000,
+  "Sulfur": 560,
+  "Sweat Salt": 436,
+  "Tallow": 668,
+  "Water": 1000,
+  "Glimmer Powder": 715,
+};
+
+// Extract catalyst name from strings like "Bor (720)" or "Calx Powder (715)"
+function parseCatalystName(catalystStr) {
+  if (!catalystStr || catalystStr === "None") return "None";
+  const m = catalystStr.match(/^(.+?)\s*\(\d+\)$/);
+  return m ? m[1].trim() : catalystStr.trim();
+}
+
+// Compute total catalyst needed for stacks of ore (with optional OGH 3% buff)
+function catalystNeeded(catalystStr, inputUnits, buffKey) {
+  const name = parseCatalystName(catalystStr);
+  const base = CATALYST_PER_10K[name];
+  if (base == null || base === 0) return null;
+  const stacks = inputUnits / 10000;
+  let qty = stacks * base;
+  if (buffKey === "cm" || buffKey === "cmo") qty = Math.ceil(qty * 1.03);
+  return { name, qty: Math.ceil(qty), perStack: (buffKey === "cm" || buffKey === "cmo") ? Math.ceil(base * 1.03) : base };
+}
 
 // ══════════════════════════════════════════════════════
 //  BUFF BAR
@@ -393,8 +444,8 @@ const BUFF_MULTIPLIERS = { none:1, cm:1.0845, cmo:1.1345 };
 function BuffBar({ buffKey, setBuffKey }) {
   const BUFFS = [
     { key:"none", label:"No Buff", pct:null, cls:"" },
-    { key:"cm",   label:"Clade + Mastery", pct:"+8.45%", cls:"active-cm" },
-    { key:"cmo",  label:"Clade + Mastery + Outpost", pct:"+13.45%", cls:"active-cmo" },
+    { key:"cm",   label:"Clade + Mastery", pct:"+9%", cls:"active-cm" },
+    { key:"cmo",  label:"Clade + Mastery + Outpost", pct:"+14%", cls:"active-cmo" },
   ];
   const active = BUFFS.find(b => b.key === buffKey);
   return React.createElement('div', { className:'buff-bar' },
@@ -471,6 +522,7 @@ function buildForwardGraph(allowDangerous, allowKimurite) {
   const addEdge = (from, to, meta) => {
     if (!allowDangerous && DANGEROUS_MACHINES.has(meta.machine)) return;
     if (!allowKimurite && from === "Kimurite") return;
+    if (RARE_CATALYSTS.has(parseCatalystName(meta.catalyst))) return;
     if (!graph[from]) graph[from] = [];
     graph[from].push({ to, ...meta });
   };
@@ -554,11 +606,12 @@ function scorePaths(rawPaths, startQty, target, mult) {
 
 // ── Reverse-search logic (for alloys) ────────────────────────────────────────
 
-function computeIngredients(alloy, amount) {
+function computeIngredients(alloy, amount, buffKey) {
   const recipe = REFINING_RECIPES[alloy];
   if (!recipe) return null;
   const totalParts = recipe.ingredients.reduce((s,[,p])=>s+p, 0);
-  const totalInput = amount / 0.35;
+  const furnaceYield = (buffKey === "cm" || buffKey === "cmo") ? 0.3605 : 0.35;
+  const totalInput = amount / furnaceYield;
   return recipe.ingredients.map(([name,parts])=>({ name, needed: totalInput*(parts/totalParts) }));
 }
 
@@ -569,7 +622,7 @@ function bestSourceFor(material, allowDangerous, allowKimurite) {
   return sources.reduce((best,s)=>s.ratio>best.ratio?s:best, sources[0]);
 }
 
-function computeReverseResult(alloy, qty, allowDangerous, allowKimurite, mult) {
+function computeReverseResult(alloy, qty, allowDangerous, allowKimurite, mult, buffKey) {
   // expand refining tree
   const refiningSteps = [];
   const visitedRef = new Set();
@@ -578,7 +631,7 @@ function computeReverseResult(alloy, qty, allowDangerous, allowKimurite, mult) {
     visitedRef.add(alloyName);
     const recipe = REFINING_RECIPES[alloyName];
     if (!recipe) return;
-    const ings = computeIngredients(alloyName, neededQty);
+    const ings = computeIngredients(alloyName, neededQty, buffKey);
     ings.forEach(({ name, needed }) => { if (REFINING_RECIPES[name]) expandRefining(name, needed); });
     refiningSteps.push({ output: alloyName, outputQty: neededQty, ingredients: ings });
   }
@@ -688,6 +741,7 @@ function StepCard({ children, color, label, title, badge, badgeClass }) {
 
 // ── Guide sections renderer (shared by alloy + extraction paths) ──────────────
 function GuideContent({ sortedMining, orderedExtr, refiningSteps, hiddenWarnings, vendorNeeds, buffKey }) {
+  const allowDangerous = useContext(DangerContext);
   return React.createElement('div', null,
     // Warning
     hiddenWarnings && hiddenWarnings.length > 0 && React.createElement('div',{className:'danger-warning'},
@@ -750,7 +804,29 @@ function GuideContent({ sortedMining, orderedExtr, refiningSteps, hiddenWarnings
             if (i>0) elements.push(React.createElement('div',{key:'gap-'+s.from,style:{height:4}}));
           }
           const color = STEP_COLORS[Math.min(colorIdx,3)];
+          const catName = parseCatalystName(s.catalyst);
+          const isPractical = (catName === "Rock Oil" || catName === "Coke") && (() => {
+            const allRecs = [...(RECIPES[s.from]||[]), ...(SUB_RECIPES[s.from]||[])];
+            const options = allRecs.filter(r =>
+              r.outputs[s.to] !== undefined &&
+              !RARE_CATALYSTS.has(parseCatalystName(r.catalyst)) &&
+              (!allowDangerous ? !DANGEROUS_MACHINES.has(r.machine) : true)
+            );
+            if (options.length <= 1) return false;
+            // Find the highest-yield option
+            const bestRatio = Math.max(...options.map(r => r.outputs[s.to]));
+            const bestRec = options.find(r => r.outputs[s.to] === bestRatio);
+            const bestCatName = parseCatalystName(bestRec.catalyst);
+            // Only flag practical if the best option does NOT already use a practical catalyst
+            // (regardless of which machine it uses)
+            const bestIsPractical = bestCatName === "Rock Oil" || bestCatName === "Coke";
+            return !bestIsPractical;
+          })();
           const catStr = (() => {
+            const cat = catalystNeeded(s.catalyst, s.inputNeeded, buffKey);
+            if (cat && cat.qty > 0) {
+              return `${cat.name}: ${fmt(cat.qty)} total (${cat.perStack}/stack)`;
+            }
             const stacks = s.inputNeeded/10000;
             const m = s.catalyst.match(/^(.+?)\s*\((\d+)\)$/);
             return m ? `${m[1]}: ${fmt(stacks*Number(m[2]))} (${m[2]}/stack)` : `Catalyst: ${s.catalyst}`;
@@ -758,9 +834,16 @@ function GuideContent({ sortedMining, orderedExtr, refiningSteps, hiddenWarnings
           elements.push(React.createElement(StepCard,{key:s.from+"->"+s.to, color,
             title:`${s.from} → ${s.to}`,
             badge:fmt(s.needed)+" "+s.to, badgeClass:"badge-green"},
-            React.createElement('div',{style:{fontSize:11,color:"var(--text3)"}},
-              `${MACHINE_ICONS[s.machine]||"⚙"} ${s.machine} · ${catStr} · Yield: ${(s.ratio/100).toFixed(2)}%`
-              +(buffKey!=="none"?` (×${BUFF_MULTIPLIERS[buffKey]} buffed)`:"")),
+            React.createElement('div',{style:{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}},
+              React.createElement('span',{style:{fontSize:11,color:"var(--text3)"}},
+                `${MACHINE_ICONS[s.machine]||"⚙"} ${s.machine} · ${catStr} · Yield: ${(s.ratio/100).toFixed(2)}%`
+                +(buffKey!=="none"?` (×${BUFF_MULTIPLIERS[buffKey]} buffed)`:"")),
+              isPractical && React.createElement('span',{style:{
+                fontSize:10,padding:"1px 7px",borderRadius:10,
+                background:"#1a2e1f",border:"0.5px solid var(--green)",
+                color:"var(--green)",fontWeight:600,whiteSpace:"nowrap"
+              }},"✓ practical option")
+            ),
             React.createElement('div',{style:{fontSize:11,color:"var(--text2)",marginTop:4}},
               `Input: ${fmt(s.inputNeeded)} ${s.from}`)
           ));
@@ -846,7 +929,7 @@ function RefiningExtractionTab({ buffKey }) {
 
     if (isAlloy) {
       // Alloy mode: single deterministic guide from reverse-search
-      const guide = computeReverseResult(target, qty, allowDangerous, allowKimurite, mult);
+      const guide = computeReverseResult(target, qty, allowDangerous, allowKimurite, mult, buffKey);
       // Byproducts = everything produced during extraction that isn't an alloy ingredient
       // (just collect from extraction steps)
       const bp = {};
@@ -893,7 +976,16 @@ function RefiningExtractionTab({ buffKey }) {
         const oreNeeded = qty / (yieldPer10k / 10000);
         const byproducts = getPathByproducts(path, oreNeeded, mult);
         return { ore, path, targetQty:qty, oreNeeded, byproducts, yieldPer10k };
-      }).sort((a,b) => a.oreNeeded - b.oreNeeded); // sort: least ore needed = most efficient
+      }).sort((a,b) => {
+        const oreDiff = a.oreNeeded - b.oreNeeded;
+        if (Math.abs(oreDiff) > 0.01) return oreDiff; // different ore amounts — sort normally
+        // Tiebreak: practical catalyst (Rock Oil / Coke) wins
+        const aPractical = a.path.some(e => { const c = parseCatalystName(e.catalyst); return c==="Rock Oil"||c==="Coke"; });
+        const bPractical = b.path.some(e => { const c = parseCatalystName(e.catalyst); return c==="Rock Oil"||c==="Coke"; });
+        if (aPractical && !bPractical) return -1;
+        if (!aPractical && bPractical) return 1;
+        return 0;
+      }); // sort: least ore needed = most efficient, practical wins tiebreaks
 
       setResult({ mode:"extraction", target, qty, scored });
       setPathIdx(0);
@@ -922,8 +1014,10 @@ function RefiningExtractionTab({ buffKey }) {
         ),
         React.createElement('div', { className:"rs-field", style:{flex:2} },
           React.createElement('span', { className:"rs-label" }, "Desired Amount"),
-          React.createElement('input', { type:"text", placeholder:"e.g. 10000", value:amount,
-            onChange:e=>setAmount(e.target.value), onKeyDown:e=>e.key==="Enter"&&calculate() })
+          React.createElement('div',{style:{display:"flex",gap:6,alignItems:"center"}},
+            React.createElement('input', { type:"text", placeholder:"e.g. 10000", value:amount,
+              onChange:e=>setAmount(e.target.value), onKeyDown:e=>e.key==="Enter"&&calculate() })
+          )
         ),
         React.createElement('button', { className:"rs-btn", onClick:calculate }, "Calculate")
       )
@@ -1010,14 +1104,31 @@ function RefiningExtractionTab({ buffKey }) {
               const globalIdx = result.scored.indexOf(p);
               const bpCount = Object.values(p.byproducts).filter(v=>v>0).length;
               const isOverall = result.scored[0] === p;
+              const hasPractical = !isOverall && p.path.some(edge => {
+                const cn = parseCatalystName(edge.catalyst);
+                if (cn !== "Rock Oil" && cn !== "Coke") return false;
+                // Check if the best-yield option for this step already uses a practical catalyst
+                const allRecs = Object.values(SUB_RECIPES).flat().concat(Object.values(RECIPES).flat());
+                const options = allRecs.filter(r =>
+                  r.outputs[edge.to] !== undefined &&
+                  !RARE_CATALYSTS.has(parseCatalystName(r.catalyst)) &&
+                  (!allowDangerous ? !DANGEROUS_MACHINES.has(r.machine) : true)
+                );
+                if (options.length <= 1) return false;
+                const bestRatio = Math.max(...options.map(r => r.outputs[edge.to]));
+                const bestCat = parseCatalystName(options.find(r => r.outputs[edge.to] === bestRatio).catalyst);
+                return bestCat !== "Rock Oil" && bestCat !== "Coke";
+              });
               const label = isOverall
                 ? `🏆 Optimal (${p.ore})`
-                : oreFilter
-                  ? `Route ${i+1}`
-                  : `Route ${i+1}: ${p.ore}`;
+                : hasPractical
+                  ? oreFilter ? `✓ Practical` : `✓ Practical (${p.ore})`
+                  : oreFilter
+                    ? `Route ${i+1}`
+                    : `Route ${i+1}: ${p.ore}`;
               return React.createElement('button', {
                 key: globalIdx,
-                className: `path-tab-btn${isOverall?" best":""}${pathIdx===globalIdx?" active":""}`,
+                className: `path-tab-btn${isOverall?" best":""}${hasPractical&&!isOverall?" practical":""}${pathIdx===globalIdx?" active":""}`,
                 onClick: () => setPathIdx(globalIdx),
               },
                 React.createElement('div', null, label),
