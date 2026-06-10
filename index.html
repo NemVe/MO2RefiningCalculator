@@ -220,7 +220,18 @@ const DangerContext = createContext(true); // true = has access to dangerous mac
 const KimuriteContext = createContext(false); // false = Kimurite route OFF by default (high-risk ore)
 const DANGEROUS_MACHINES = new Set(["Blast Furnace", "Greater Nat"]);
 // Materials available for direct purchase from in-game vendors — skip extraction entirely
-const VENDOR_MATERIALS = new Set(["Calamine", "Ichor", "Sulfur"]);
+const VENDOR_MATERIALS = new Set(["Calamine", "Ichor", "Sulfur", "Dragon Salt", "Fuming Salt", "Rock Oil"]);
+
+// Labels for special materials shown in the vendor/collect sections
+const SPECIAL_MATERIAL_LABEL = {
+  "Calamine":    "Buy from utility vendor",
+  "Sulfur":      "Buy from utility vendor",
+  "Dragon Salt": "Buy from utility vendor",
+  "Fuming Salt": "Buy from utility vendor",
+  "Ichor":       "Buy from magic vendor",
+  "Rock Oil":    "Buy from magic vendor",
+  "Bor":         "Collect outside of Meduli",
+};
 
 // ═══════════════════════════════════════════════════════
 //  DATA
@@ -693,7 +704,7 @@ function computeReverseResult(alloy, qty, allowDangerous, allowKimurite, mult, b
         // Player already has this alloy — collect from dungeon/loot, skip its extraction chain
         collectedNeeds[name] = (collectedNeeds[name]||0) + needed;
       } else if (!REFINING_RECIPES[name]) {
-        if (VENDOR_MATERIALS.has(name)) vendorNeeds[name] = (vendorNeeds[name]||0)+needed;
+        if (VENDOR_MATERIALS.has(name) || SPECIAL_MATERIAL_LABEL[name]) vendorNeeds[name] = (vendorNeeds[name]||0)+needed;
         else rawNeeds[name] = (rawNeeds[name]||0)+needed;
       }
       // if REFINING_RECIPES[name] and NOT owned, its ingredients were already expanded recursively
@@ -703,6 +714,15 @@ function computeReverseResult(alloy, qty, allowDangerous, allowKimurite, mult, b
   const miningMap = {};
   const extractionStepList = [];
   const addedExtrSteps = new Set();
+
+  // Catalysts that must be mined/extracted (not pure vendor items)
+  const EXTRACTABLE_CATALYSTS = new Set([
+    "Calx Powder", "Coal", "Coke", "Sulfur", "Ichor",
+    "Salt", "Water", "Calamine", "Malachite"
+  ]);
+
+  // Bor is also treated as "special collect" — not mined, not extracted
+  const SPECIAL_COLLECT = new Set(["Bor"]);
 
   function resolveExtraction(material, needed) {
     const src = bestSourceFor(material, allowDangerous, allowKimurite);
@@ -725,7 +745,82 @@ function computeReverseResult(alloy, qty, allowDangerous, allowKimurite, mult, b
     }
   }
 
+  // Pass 1: resolve all primary material needs
   Object.entries(rawNeeds).forEach(([mat,needed])=>resolveExtraction(mat,needed));
+
+  // Pass 2: collect catalyst needs from all primary extraction steps (once, no recursion)
+  const catalystNeededMap = {}; // catalystName -> totalQty
+  extractionStepList.forEach(s => {
+    const catName = parseCatalystName(s.catalyst);
+    if (!catName || catName === "None") return;
+    // Special materials (vendor/collect) go to vendorNeeds, not catalystNeededMap
+    if (VENDOR_MATERIALS.has(catName) || SPECIAL_MATERIAL_LABEL[catName]) {
+      const cat = catalystNeeded(s.catalyst, s.inputNeeded, buffKey);
+      if (cat && cat.qty > 0) vendorNeeds[catName] = (vendorNeeds[catName]||0) + cat.qty;
+      return;
+    }
+    if (!EXTRACTABLE_CATALYSTS.has(catName)) return;
+    const cat = catalystNeeded(s.catalyst, s.inputNeeded, buffKey);
+    if (cat && cat.qty > 0) catalystNeededMap[catName] = (catalystNeededMap[catName]||0) + cat.qty;
+  });
+
+  // Pass 3: resolve catalyst extraction chains separately
+  const catalystExtrSteps = [];
+  const catMiningMap = {};
+  const addedCatSteps = new Set();
+
+  function resolveCatalystExtr(material, needed) {
+    const src = bestSourceFor(material, allowDangerous, allowKimurite);
+    if (!src) return;
+    const oreName = src.type==="ore" ? src.ore : src.input;
+    const yieldPer = (src.ratio/10000)*mult;
+    const inputNeeded = needed/yieldPer;
+    const stepKey = `cat:${oreName}->${material}`;
+    if (!addedCatSteps.has(stepKey)) {
+      addedCatSteps.add(stepKey);
+      catalystExtrSteps.push({ from:oreName, to:material, needed, inputNeeded, machine:src.machine, catalyst:src.catalyst, ratio:src.ratio, isCatalystStep:true });
+    } else {
+      const ex = catalystExtrSteps.find(s=>s.from===oreName&&s.to===material);
+      if (ex) { ex.needed+=needed; ex.inputNeeded+=inputNeeded; }
+    }
+    if (src.type==="sub" && !RECIPES[src.input]) resolveCatalystExtr(oreName, inputNeeded);
+    else {
+      if (!catMiningMap[oreName]) catMiningMap[oreName]={ oreNeeded:0 };
+      catMiningMap[oreName].oreNeeded+=inputNeeded;
+    }
+    // Handle catalysts-of-catalysts (e.g. Coal needed to make Coke)
+    const subCatName = parseCatalystName(src.catalyst);
+    if (subCatName && subCatName !== "None" && EXTRACTABLE_CATALYSTS.has(subCatName)) {
+      const subCat = catalystNeeded(src.catalyst, inputNeeded, buffKey);
+      if (subCat && subCat.qty > 0) {
+        const subKey = `subcat:${stepKey}:${subCatName}`;
+        if (!addedCatSteps.has(subKey)) {
+          addedCatSteps.add(subKey);
+          resolveCatalystExtr(subCatName, subCat.qty);
+        }
+      }
+    }
+  }
+
+  Object.entries(catalystNeededMap).forEach(([mat,needed])=>resolveCatalystExtr(mat,needed));
+
+  // Reverse to get correct dependency order (deepest dependencies first)
+  catalystExtrSteps.reverse();
+
+  // Add vendor/special catalyst items directly into catalystExtrSteps
+  // so they appear in the same phase with their vendor note
+  Object.entries(vendorNeeds).forEach(([mat, needed]) => {
+    const label = SPECIAL_MATERIAL_LABEL[mat] || "Buy from vendor";
+    catalystExtrSteps.push({ from:null, to:mat, needed, inputNeeded:0, machine:null, catalyst:null, ratio:0, isCatalystStep:true, isVendor:true, vendorLabel:label });
+  });
+  // Clear vendorNeeds so it doesn't render as a separate section
+  Object.keys(vendorNeeds).forEach(k => delete vendorNeeds[k]);
+
+  // Merge catalyst mining into main mining map
+  Object.entries(catMiningMap).forEach(([ore,info])=>{
+    if (!miningMap[ore]) miningMap[ore]={ oreNeeded:0 };
+    miningMap[ore].oreNeeded+=info.oreNeeded;
+  });
   Object.values(miningMap).forEach(o=>{ o.stacks=o.oreNeeded/10000; });
   const sortedMining = Object.entries(miningMap).sort((a,b)=>b[1].oreNeeded-a[1].oreNeeded);
 
@@ -755,7 +850,7 @@ function computeReverseResult(alloy, qty, allowDangerous, allowKimurite, mult, b
     });
   }
 
-  return { sortedMining, orderedExtr, refiningSteps: filteredRefiningSteps, hiddenWarnings, vendorNeeds, collectedNeeds };
+  return { sortedMining, orderedExtr, catalystExtrSteps, refiningSteps: filteredRefiningSteps, hiddenWarnings, vendorNeeds, collectedNeeds };
 }
 
 // ── Collapsible section component ────────────────────────────────────────────
@@ -793,7 +888,7 @@ function StepCard({ children, color, label, title, badge, badgeClass }) {
 }
 
 // ── Guide sections renderer (shared by alloy + extraction paths) ──────────────
-function GuideContent({ sortedMining, orderedExtr, refiningSteps, hiddenWarnings, vendorNeeds, collectedNeeds, buffKey }) {
+function GuideContent({ sortedMining, orderedExtr, catalystExtrSteps, refiningSteps, hiddenWarnings, vendorNeeds, collectedNeeds, buffKey }) {
   const allowDangerous = useContext(DangerContext);
   return React.createElement('div', null,
     // Warning
@@ -845,26 +940,86 @@ function GuideContent({ sortedMining, orderedExtr, refiningSteps, hiddenWarnings
       )
     ),
 
-    // Vendor
+    // Special Materials (vendor / collect)
     vendorNeeds && Object.keys(vendorNeeds).length > 0 && React.createElement(CollapsibleSection,{
-      title:"🛒 Vendor Materials", color:"var(--purple)", count:Object.keys(vendorNeeds).length
+      title:"🛒 Special Materials", color:"var(--purple)", count:Object.keys(vendorNeeds).length
     },
-      Object.entries(vendorNeeds).map(([mat,needed])=>
-        React.createElement('div',{key:mat,style:{
-          display:"flex",justifyContent:"space-between",alignItems:"center",
-          background:"var(--bg2)",border:"0.5px solid var(--border)",
-          borderRadius:"var(--r-md)",padding:"10px 14px",marginBottom:6,
-          borderLeft:"3px solid var(--purple)"
-        }},
-          React.createElement('span',{style:{fontSize:13,fontWeight:600,color:"var(--text1)"}},`🛒 Buy ${mat}`),
-          React.createElement('span',{className:'badge badge-purple'},fmt(needed)+" units")
-        )
-      )
+      (() => {
+        const groups = {};
+        Object.entries(vendorNeeds).forEach(([mat, needed]) => {
+          const label = SPECIAL_MATERIAL_LABEL[mat] || "Buy from vendor";
+          if (!groups[label]) groups[label] = [];
+          groups[label].push([mat, needed]);
+        });
+        const icons = { "Buy from utility vendor":"🛒", "Buy from magic vendor":"✨", "Collect outside of Meduli":"🌍" };
+        return Object.entries(groups).map(([label, items]) =>
+          React.createElement('div',{key:label,style:{marginBottom:10}},
+            React.createElement('div',{style:{fontSize:10,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:5,fontWeight:600}},
+              `${icons[label]||"🛒"} ${label}`),
+            items.map(([mat, needed]) =>
+              React.createElement('div',{key:mat,style:{
+                display:"flex",justifyContent:"space-between",alignItems:"center",
+                background:"var(--bg2)",border:"0.5px solid var(--border)",
+                borderRadius:"var(--r-md)",padding:"8px 14px",marginBottom:4,
+                borderLeft:"3px solid var(--purple)"
+              }},
+                React.createElement('span',{style:{fontSize:13,fontWeight:600,color:"var(--text1)"}}, mat),
+                React.createElement('span',{className:'badge badge-purple'}, fmt(needed)+" units")
+              )
+            )
+          )
+        );
+      })()
     ),
 
     // Phase 2 Extraction
+    // ── Catalyst preparation phase (new) ─────────────────────────────
+    catalystExtrSteps && catalystExtrSteps.length > 0 && React.createElement(CollapsibleSection,{
+      title:"🧪 Phase 2 — Catalyst Prep", color:"#c9a227", count:catalystExtrSteps.length
+    },
+      catalystExtrSteps.map((s,i) => {
+        const color = STEP_COLORS[Math.min(i,3)];
+
+        // Vendor item — render as a simple purchase card
+        if (s.isVendor) {
+          const icons = { "Buy from utility vendor":"🛒", "Buy from magic vendor":"✨", "Collect outside of Meduli":"🌍" };
+          const icon = icons[s.vendorLabel] || "🛒";
+          return React.createElement('div',{key:`vendor-${s.to}`,style:{
+            display:"flex",justifyContent:"space-between",alignItems:"center",
+            background:"var(--bg1)",border:"0.5px solid var(--border)",
+            borderRadius:"var(--r-md)",padding:"10px 14px",marginBottom:8,
+            borderLeft:"3px solid var(--purple)"
+          }},
+            React.createElement('div',null,
+              React.createElement('div',{style:{fontSize:13,fontWeight:600,color:"var(--text1)"}}, s.to),
+              React.createElement('div',{style:{fontSize:11,color:"var(--text3)",marginTop:2}}, `${icon} ${s.vendorLabel}`)
+            ),
+            React.createElement('span',{className:'badge badge-purple'}, fmt(s.needed)+" units")
+          );
+        }
+
+        // Normal extraction step
+        return React.createElement(StepCard,{key:`cat-${s.from}->${s.to}`, color,
+          title:`${s.from} → ${s.to}`,
+          badge:fmt(s.needed)+" "+s.to, badgeClass:"badge-gold"},
+          React.createElement('div',{style:{fontSize:11,color:"var(--text3)"}},
+            (()=>{
+              const cat2 = catalystNeeded(s.catalyst, s.inputNeeded, buffKey);
+              const catStr2 = cat2 && cat2.qty > 0
+                ? `${cat2.name}: ${fmt(cat2.qty)} total (${cat2.perStack}/stack)`
+                : `Catalyst: ${s.catalyst}`;
+              return `${MACHINE_ICONS[s.machine]||"⚙"} ${s.machine} · ${catStr2} · Yield: ${(s.ratio/100).toFixed(2)}%`
+                +(buffKey!=="none"?` (×${BUFF_MULTIPLIERS[buffKey]} buffed)`:"");
+            })()
+          ),
+          React.createElement('div',{style:{fontSize:11,color:"var(--text2)",marginTop:4}},`Input: ${fmt(s.inputNeeded)} ${s.from}`)
+        );
+      })
+    ),
+
+    // ── Main extraction phase (renumbered to Phase 3) ─────────────────
     orderedExtr.length > 0 && React.createElement(CollapsibleSection,{
-      title:"⚙ Phase 2 — Extraction", color:"var(--green)", count:orderedExtr.length
+      title:`⚙ Phase ${catalystExtrSteps && catalystExtrSteps.length > 0 ? 3 : 2} — Extraction`, color:"var(--green)", count:orderedExtr.length
     },
       (() => {
         const elements = [];
@@ -909,9 +1064,9 @@ function GuideContent({ sortedMining, orderedExtr, refiningSteps, hiddenWarnings
       })()
     ),
 
-    // Phase 3 Refining
+    // Phase 3/4 Refining
     refiningSteps && refiningSteps.length > 0 && React.createElement(CollapsibleSection,{
-      title:"🔥 Phase 3 — Refining", color:"var(--blue)", count:refiningSteps.length
+      title:`🔥 Phase ${catalystExtrSteps && catalystExtrSteps.length > 0 ? 4 : 3} — Refining`, color:"var(--blue)", count:refiningSteps.length
     },
       refiningSteps.map((step,i)=>
         React.createElement(StepCard,{key:step.output, color:STEP_COLORS[Math.min(i,3)],
@@ -1155,7 +1310,7 @@ function RefiningExtractionTab({ buffKey }) {
     // Alloy result
     result && result.mode === "alloy" && React.createElement('div', null,
       React.createElement(ResultHero, { target:result.target, targetQty:result.qty, byproducts:result.byproducts }),
-      React.createElement(GuideContent, { ...result.guide, buffKey, collectedNeeds: result.guide.collectedNeeds||{} })
+      React.createElement(GuideContent, { ...result.guide, buffKey, collectedNeeds: result.guide.collectedNeeds||{}, catalystExtrSteps: result.guide.catalystExtrSteps||[] })
     ),
 
     // Extraction path result
@@ -1249,7 +1404,7 @@ function RefiningExtractionTab({ buffKey }) {
         // Fix from: each step's from is previous step's to
         for (let i=1; i<orderedExtr.length; i++) orderedExtr[i].from = orderedExtr[i-1].to;
 
-        return React.createElement(GuideContent, { sortedMining, orderedExtr, refiningSteps:[], hiddenWarnings:[], vendorNeeds:{}, collectedNeeds:{}, buffKey });
+        return React.createElement(GuideContent, { sortedMining, orderedExtr, catalystExtrSteps:[], refiningSteps:[], hiddenWarnings:[], vendorNeeds:{}, collectedNeeds:{}, buffKey });
       })()
     )
   );
