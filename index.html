@@ -215,17 +215,26 @@
 <div id="root"></div>
 <script>
 const { useState, useEffect, useContext, createContext, useCallback } = React;
-const BuffContext = createContext(1);
-const DangerContext = createContext(true); // true = has access to dangerous machines
-const KimuriteContext = createContext(false); // false = Kimurite route OFF by default (high-risk ore)
-const DANGEROUS_MACHINES = new Set(["Blast Furnace", "Greater Nat"]);
+const DangerContext = createContext({ allowGreaterNat:false, allowBlastFurnace:false });
+const KimuriteContext = createContext(false);
+
+// Check if a machine is allowed given the machine settings object
+function isMachineAllowed(machine, machineSettings) {
+  if (machine === "Greater Nat")   return machineSettings.allowGreaterNat;
+  if (machine === "Blast Furnace") return machineSettings.allowBlastFurnace;
+  return true;
+}
+// Legacy helper: is ANY dangerous machine blocked?
+function anyDangerousBlocked(machineSettings) {
+  return !machineSettings.allowGreaterNat || !machineSettings.allowBlastFurnace;
+}
 // Materials available for direct purchase from in-game vendors — skip extraction entirely
 const VENDOR_MATERIALS = new Set(["Calamine", "Ichor", "Sulfur", "Dragon Salt", "Fuming Salt", "Rock Oil"]);
 
 // Labels for special materials shown in the vendor/collect sections
 const SPECIAL_MATERIAL_LABEL = {
-  "Calamine":    "Buy from utility vendor",
-  "Sulfur":      "Buy from utility vendor",
+  "Calamine":    "Buy from magic vendor",
+  "Sulfur":      "Buy from magic vendor",
   "Dragon Salt": "Buy from utility vendor",
   "Fuming Salt": "Buy from utility vendor",
   "Ichor":       "Buy from magic vendor",
@@ -380,19 +389,17 @@ const REFINING_RECIPES = {
 // Returns true if using Coke/Rock Oil for a from→to step is a meaningful practical tradeoff,
 // meaning there exists a higher-yield option that does NOT use a practical catalyst.
 // If ALL top options already use Coke/Rock Oil, it's not a tradeoff — don't flag it.
-function isStepPractical(fromNode, toMat, catalyst, allowDangerous) {
+function isStepPractical(fromNode, toMat, catalyst, machineSettings) {
   const cn = parseCatalystName(catalyst);
   if (cn !== "Rock Oil" && cn !== "Coke") return false;
   const srcRecs = [...(RECIPES[fromNode]||[]), ...(SUB_RECIPES[fromNode]||[])];
   const options = srcRecs.filter(r =>
     r.outputs[toMat] !== undefined &&
     !RARE_CATALYSTS.has(parseCatalystName(r.catalyst)) &&
-    (!allowDangerous ? !DANGEROUS_MACHINES.has(r.machine) : true)
+    isMachineAllowed(r.machine, machineSettings)
   );
   if (options.length <= 1) return false;
   const bestRatio = Math.max(...options.map(r => r.outputs[toMat]));
-  // Check if ALL options at best ratio use a practical catalyst
-  // If even ONE top option uses a non-practical catalyst, flagging is meaningful
   const topOptions = options.filter(r => r.outputs[toMat] === bestRatio);
   const allTopArePractical = topOptions.every(r => {
     const c = parseCatalystName(r.catalyst);
@@ -404,10 +411,10 @@ function isStepPractical(fromNode, toMat, catalyst, allowDangerous) {
 // Catalysts that are too rare/expensive to use in auto-routing
 const RARE_CATALYSTS = new Set(["Glimmer Powder"]);
 
-function buildExtractionIndex(allowDangerous, allowKimurite) {
+function buildExtractionIndex(machineSettings, allowKimurite) {
   const idx = {};
   const addEntry = (material, source) => {
-    if (!allowDangerous && DANGEROUS_MACHINES.has(source.machine)) return;
+    if (!isMachineAllowed(source.machine, machineSettings)) return;
     const sourceOre = source.type === "ore" ? source.ore : source.input;
     if (!allowKimurite && sourceOre === "Kimurite") return;
     if (RARE_CATALYSTS.has(parseCatalystName(source.catalyst))) return;
@@ -445,7 +452,17 @@ const TIER_STYLE = [
   { bg:"var(--bg1)", accent:"#378ADD" },
   { bg:"var(--bg2)", accent:"#7F77DD" },
 ];
-const BUFF_MULTIPLIERS = { none:1, cm:1.09, cmo:1.14 };
+// Per-buff bonuses
+// Clade:   +3% extracting, +3% refining, +3% catalyst amount
+// Mastery: +6% extracting only
+// Outpost: +5% extracting only
+function computeBuffMults(activeBuffs) {
+  let extractMult = 1, refineMult = 1, catalystMult = 1;
+  if (activeBuffs.has("clade"))   { extractMult += 0.03; refineMult += 0.03; catalystMult += 0.03; }
+  if (activeBuffs.has("mastery")) { extractMult += 0.06; }
+  if (activeBuffs.has("outpost")) { extractMult += 0.05; }
+  return { extractMult, refineMult, catalystMult };
+}
 
 // Catalyst cost per 10k ore (from Junne's table). Used to show catalyst quantities.
 // Values are base per-10k amounts; with OGH Clade (+3%) multiply by 1.03 and ceil.
@@ -482,60 +499,85 @@ function parseCatalystName(catalystStr) {
   return m ? m[1].trim() : catalystStr.trim();
 }
 
-// Compute total catalyst needed for stacks of ore (with optional OGH 3% buff)
-function catalystNeeded(catalystStr, inputUnits, buffKey) {
+// Compute total catalyst needed for stacks of ore (with optional Clade +3% buff)
+function catalystNeeded(catalystStr, inputUnits, buffs) {
   const name = parseCatalystName(catalystStr);
   const base = CATALYST_PER_10K[name];
   if (base == null || base === 0) return null;
   const stacks = inputUnits / 10000;
-  let qty = stacks * base;
-  if (buffKey === "cm" || buffKey === "cmo") qty = Math.ceil(qty * 1.03);
-  return { name, qty: Math.ceil(qty), perStack: (buffKey === "cm" || buffKey === "cmo") ? Math.ceil(base * 1.03) : base };
+  const cm = buffs ? buffs.catalystMult : 1;
+  const perStack = cm > 1 ? Math.ceil(base * cm) : base;
+  const qty = Math.ceil(stacks * perStack);
+  return { name, qty, perStack };
 }
 
 // ══════════════════════════════════════════════════════
 //  BUFF BAR
 // ══════════════════════════════════════════════════════
-function BuffBar({ buffKey, setBuffKey }) {
+function BuffBar({ activeBuffs, setActiveBuffs }) {
   const BUFFS = [
-    { key:"none", label:"No Buff", pct:null, cls:"" },
-    { key:"cm",   label:"Clade + Mastery", pct:"+9%", cls:"active-cm" },
-    { key:"cmo",  label:"Clade + Mastery + Outpost", pct:"+14%", cls:"active-cmo" },
+    { key:"clade",   label:"Clade",   desc:"+3% Extraction + Refining", color:"var(--green)", bg:"#1a2e1f" },
+    { key:"mastery", label:"Mastery", desc:"+6% Extraction",           color:"var(--blue)",  bg:"#1e2538" },
+    { key:"outpost", label:"Outpost", desc:"+5% Extraction",           color:"var(--purple)", bg:"#21203a" },
   ];
-  const active = BUFFS.find(b => b.key === buffKey);
+  const toggle = key => setActiveBuffs(prev => {
+    const next = new Set(prev);
+    next.has(key) ? next.delete(key) : next.add(key);
+    return next;
+  });
+  const buffs = computeBuffMults(activeBuffs);
+  const exPct = Math.round((buffs.extractMult - 1) * 100);
+  const refPct = Math.round((buffs.refineMult - 1) * 100);
   return React.createElement('div', { className:'buff-bar' },
-    React.createElement('span', { className:'buff-label' }, "⚡ Buff"),
-    BUFFS.map(b =>
-      React.createElement('button', {
-        key:b.key, className:`buff-toggle${buffKey===b.key?' '+b.cls:''}`,
-        onClick:()=>setBuffKey(b.key),
+    React.createElement('span', { className:'buff-label' }, "⚡ Buffs"),
+    BUFFS.map(b => {
+      const on = activeBuffs.has(b.key);
+      return React.createElement('button', {
+        key: b.key,
+        onClick: () => toggle(b.key),
+        style:{
+          display:"inline-flex", alignItems:"center", gap:7,
+          padding:"6px 13px", borderRadius:20, whiteSpace:"nowrap",
+          border:`1px solid ${on ? b.color : "var(--border)"}`,
+          background: on ? b.bg : "var(--bg2)",
+          color: on ? b.color : "var(--text2)",
+          fontSize:12, fontWeight:500, cursor:"pointer", transition:"all 0.15s",
+        }
       },
-        buffKey===b.key && React.createElement('span',{className:'dot'}),
+        on && React.createElement('span',{style:{width:7,height:7,borderRadius:"50%",background:"currentColor",opacity:0.7,display:"inline-block"}}),
         b.label,
-        b.pct && React.createElement('span',{style:{opacity:.75,fontSize:11}},` ${b.pct}`)
-      )
-    ),
-    buffKey!=="none" && React.createElement('span',{className:`buff-active-badge ${buffKey}`}, active.pct+" yield")
+        React.createElement('span',{style:{opacity:.65,fontSize:10}}, ` ${b.desc}`)
+      );
+    }),
+    activeBuffs.size > 0 && React.createElement('span', {
+      style:{ fontSize:11, padding:"2px 8px", borderRadius:10, fontWeight:600, marginLeft:"auto",
+              background:"#1e2538", color:"var(--blue)" }
+    }, `Extr ×${buffs.extractMult.toFixed(2)}${refPct>0?` · Ref ×${buffs.refineMult.toFixed(2)}`:""}`)
   );
 }
 
-function DangerBar({ allowDangerous, setAllowDangerous, allowKimurite, setAllowKimurite }) {
+function DangerBar({ allowGreaterNat, setAllowGreaterNat, allowBlastFurnace, setAllowBlastFurnace, allowKimurite, setAllowKimurite }) {
+  const machineToggles = [
+    { label:"Greater Nat", icon:"🌀", val:allowGreaterNat, set:setAllowGreaterNat },
+    { label:"Blast Furnace", icon:"♨", val:allowBlastFurnace, set:setAllowBlastFurnace },
+  ];
   return React.createElement('div', { className:'danger-bar' },
     React.createElement('span', { className:'danger-label' }, "☠ Machines"),
-    React.createElement('button', {
-      className: `danger-toggle ${allowDangerous ? 'on' : 'off'}`,
-      onClick: () => setAllowDangerous(v => !v),
-    },
-      React.createElement('div', { className:'tog-track' },
-        React.createElement('div', { className:'tog-knob' })
-      ),
-      allowDangerous
-        ? "Have access to Greater Nat + Blast Furnace"
-        : "No access to Greater Nat + Blast Furnace",
+    machineToggles.map(({ label, icon, val, set }) =>
+      React.createElement('button', {
+        key: label,
+        className: `danger-toggle ${val ? 'on' : 'off'}`,
+        onClick: () => set(v => !v),
+      },
+        React.createElement('div', { className:'tog-track' },
+          React.createElement('div', { className:'tog-knob' })
+        ),
+        `${icon} ${label}`
+      )
     ),
     React.createElement('span', {
-      style: { fontSize:11, color: allowDangerous ? "#e05a3a" : "var(--green)", marginLeft:"auto", fontWeight:500 }
-    }, allowDangerous ? "⚠ High-yield dangerous machines included" : "✓ Safe machines only"),
+      style: { fontSize:11, color: (allowGreaterNat||allowBlastFurnace) ? "#e05a3a" : "var(--green)", marginLeft:"auto", fontWeight:500 }
+    }, (allowGreaterNat||allowBlastFurnace) ? "⚠ Dangerous machines included" : "✓ Safe machines only"),
     React.createElement('div', { style:{ width:"100%", height:"0.5px", background:"var(--border)", margin:"6px 0" } }),
     React.createElement('span', { className:'danger-label' }, "💀 Kimurite"),
     React.createElement('button', {
@@ -572,10 +614,10 @@ const ALL_TARGETS = [
 
 // ── Path computation helpers ──────────────────────────────────────────────────
 
-function buildForwardGraph(allowDangerous, allowKimurite) {
+function buildForwardGraph(machineSettings, allowKimurite) {
   const graph = {};
   const addEdge = (from, to, meta) => {
-    if (!allowDangerous && DANGEROUS_MACHINES.has(meta.machine)) return;
+    if (!isMachineAllowed(meta.machine, machineSettings)) return;
     if (!allowKimurite && from === "Kimurite") return;
     if (RARE_CATALYSTS.has(parseCatalystName(meta.catalyst))) return;
     if (!graph[from]) graph[from] = [];
@@ -661,23 +703,24 @@ function scorePaths(rawPaths, startQty, target, mult) {
 
 // ── Reverse-search logic (for alloys) ────────────────────────────────────────
 
-function computeIngredients(alloy, amount, buffKey) {
+function computeIngredients(alloy, amount, buffs) {
   const recipe = REFINING_RECIPES[alloy];
   if (!recipe) return null;
   const totalParts = recipe.ingredients.reduce((s,[,p])=>s+p, 0);
-  const furnaceYield = (buffKey === "cm" || buffKey === "cmo") ? 0.3605 : 0.35;
+  const furnaceYield = buffs && buffs.refineMult > 1 ? 0.35 * buffs.refineMult : 0.35;
   const totalInput = amount / furnaceYield;
   return recipe.ingredients.map(([name,parts])=>({ name, needed: totalInput*(parts/totalParts) }));
 }
 
-function bestSourceFor(material, allowDangerous, allowKimurite) {
-  const index = buildExtractionIndex(allowDangerous, allowKimurite);
+function bestSourceFor(material, machineSettings, allowKimurite) {
+  const index = buildExtractionIndex(machineSettings, allowKimurite);
   const sources = index[material];
   if (!sources || sources.length===0) return null;
   return sources.reduce((best,s)=>s.ratio>best.ratio?s:best, sources[0]);
 }
 
-function computeReverseResult(alloy, qty, allowDangerous, allowKimurite, mult, buffKey, ownedMaterials = new Set()) {
+function computeReverseResult(alloy, qty, machineSettings, allowKimurite, buffs, ownedMaterials = new Set()) {
+  const mult = buffs.extractMult;
   // expand refining tree
   const refiningSteps = [];
   const visitedRef = new Set();
@@ -686,7 +729,7 @@ function computeReverseResult(alloy, qty, allowDangerous, allowKimurite, mult, b
     visitedRef.add(alloyName);
     const recipe = REFINING_RECIPES[alloyName];
     if (!recipe) return;
-    const ings = computeIngredients(alloyName, neededQty, buffKey);
+    const ings = computeIngredients(alloyName, neededQty, buffs);
     ings.forEach(({ name, needed }) => {
       // Only recurse into sub-alloys that the player doesn't already own
       if (REFINING_RECIPES[name] && !ownedMaterials.has(name)) expandRefining(name, needed);
@@ -725,7 +768,7 @@ function computeReverseResult(alloy, qty, allowDangerous, allowKimurite, mult, b
   const SPECIAL_COLLECT = new Set(["Bor"]);
 
   function resolveExtraction(material, needed) {
-    const src = bestSourceFor(material, allowDangerous, allowKimurite);
+    const src = bestSourceFor(material, machineSettings, allowKimurite);
     if (!src) return;
     const oreName = src.type==="ore" ? src.ore : src.input;
     const yieldPer = (src.ratio/10000)*mult;
@@ -755,12 +798,12 @@ function computeReverseResult(alloy, qty, allowDangerous, allowKimurite, mult, b
     if (!catName || catName === "None") return;
     // Special materials (vendor/collect) go to vendorNeeds, not catalystNeededMap
     if (VENDOR_MATERIALS.has(catName) || SPECIAL_MATERIAL_LABEL[catName]) {
-      const cat = catalystNeeded(s.catalyst, s.inputNeeded, buffKey);
+      const cat = catalystNeeded(s.catalyst, s.inputNeeded, buffs);
       if (cat && cat.qty > 0) vendorNeeds[catName] = (vendorNeeds[catName]||0) + cat.qty;
       return;
     }
     if (!EXTRACTABLE_CATALYSTS.has(catName)) return;
-    const cat = catalystNeeded(s.catalyst, s.inputNeeded, buffKey);
+    const cat = catalystNeeded(s.catalyst, s.inputNeeded, buffs);
     if (cat && cat.qty > 0) catalystNeededMap[catName] = (catalystNeededMap[catName]||0) + cat.qty;
   });
 
@@ -770,7 +813,7 @@ function computeReverseResult(alloy, qty, allowDangerous, allowKimurite, mult, b
   const addedCatSteps = new Set();
 
   function resolveCatalystExtr(material, needed) {
-    const src = bestSourceFor(material, allowDangerous, allowKimurite);
+    const src = bestSourceFor(material, machineSettings, allowKimurite);
     if (!src) return;
     const oreName = src.type==="ore" ? src.ore : src.input;
     const yieldPer = (src.ratio/10000)*mult;
@@ -791,7 +834,7 @@ function computeReverseResult(alloy, qty, allowDangerous, allowKimurite, mult, b
     // Handle catalysts-of-catalysts (e.g. Coal needed to make Coke)
     const subCatName = parseCatalystName(src.catalyst);
     if (subCatName && subCatName !== "None" && EXTRACTABLE_CATALYSTS.has(subCatName)) {
-      const subCat = catalystNeeded(src.catalyst, inputNeeded, buffKey);
+      const subCat = catalystNeeded(src.catalyst, inputNeeded, buffs);
       if (subCat && subCat.qty > 0) {
         const subKey = `subcat:${stepKey}:${subCatName}`;
         if (!addedCatSteps.has(subKey)) {
@@ -840,11 +883,13 @@ function computeReverseResult(alloy, qty, allowDangerous, allowKimurite, mult, b
   sortedMining.forEach(([oreName])=>followChain(oreName));
 
   const hiddenWarnings = [];
-  if (!allowDangerous) {
+  if (anyDangerousBlocked(machineSettings)) {
+    // Full access settings to find what's only available from dangerous machines
+    const fullSettings = { allowGreaterNat:true, allowBlastFurnace:true };
     Object.entries(rawNeeds).forEach(([mat])=>{
-      const safeSrc=bestSourceFor(mat,false,allowKimurite);
+      const safeSrc = bestSourceFor(mat, machineSettings, allowKimurite);
       if (safeSrc) return;
-      const dangSrc=bestSourceFor(mat,true,allowKimurite);
+      const dangSrc = bestSourceFor(mat, fullSettings, allowKimurite);
       if (!dangSrc) return;
       hiddenWarnings.push({ material:mat, dangOre:dangSrc.type==="ore"?dangSrc.ore:dangSrc.input, dangMachine:dangSrc.machine, dangRatio:dangSrc.ratio });
     });
@@ -888,8 +933,8 @@ function StepCard({ children, color, label, title, badge, badgeClass }) {
 }
 
 // ── Guide sections renderer (shared by alloy + extraction paths) ──────────────
-function GuideContent({ sortedMining, orderedExtr, catalystExtrSteps, refiningSteps, hiddenWarnings, vendorNeeds, collectedNeeds, buffKey }) {
-  const allowDangerous = useContext(DangerContext);
+function GuideContent({ sortedMining, orderedExtr, catalystExtrSteps, refiningSteps, hiddenWarnings, vendorNeeds, collectedNeeds, buffs }) {
+  const machineSettings = useContext(DangerContext);
   return React.createElement('div', null,
     // Warning
     hiddenWarnings && hiddenWarnings.length > 0 && React.createElement('div',{className:'danger-warning'},
@@ -1004,12 +1049,12 @@ function GuideContent({ sortedMining, orderedExtr, catalystExtrSteps, refiningSt
           badge:fmt(s.needed)+" "+s.to, badgeClass:"badge-gold"},
           React.createElement('div',{style:{fontSize:11,color:"var(--text3)"}},
             (()=>{
-              const cat2 = catalystNeeded(s.catalyst, s.inputNeeded, buffKey);
+              const cat2 = catalystNeeded(s.catalyst, s.inputNeeded, buffs);
               const catStr2 = cat2 && cat2.qty > 0
                 ? `${cat2.name}: ${fmt(cat2.qty)} total (${cat2.perStack}/stack)`
                 : `Catalyst: ${s.catalyst}`;
-              return `${MACHINE_ICONS[s.machine]||"⚙"} ${s.machine} · ${catStr2} · Yield: ${(s.ratio/100).toFixed(2)}%`
-                +(buffKey!=="none"?` (×${BUFF_MULTIPLIERS[buffKey]} buffed)`:"");
+              const buffedNote = buffs && buffs.extractMult > 1 ? ` (×${buffs.extractMult.toFixed(2)} buffed)` : "";
+              return `${MACHINE_ICONS[s.machine]||"⚙"} ${s.machine} · ${catStr2} · Yield: ${(s.ratio/100).toFixed(2)}%${buffedNote}`;
             })()
           ),
           React.createElement('div',{style:{fontSize:11,color:"var(--text2)",marginTop:4}},`Input: ${fmt(s.inputNeeded)} ${s.from}`)
@@ -1033,9 +1078,9 @@ function GuideContent({ sortedMining, orderedExtr, catalystExtrSteps, refiningSt
           }
           const color = STEP_COLORS[Math.min(colorIdx,3)];
           const catName = parseCatalystName(s.catalyst);
-          const isPractical = isStepPractical(s.from, s.to, s.catalyst, allowDangerous);
+          const isPractical = isStepPractical(s.from, s.to, s.catalyst, machineSettings);
           const catStr = (() => {
-            const cat = catalystNeeded(s.catalyst, s.inputNeeded, buffKey);
+            const cat = catalystNeeded(s.catalyst, s.inputNeeded, buffs);
             if (cat && cat.qty > 0) {
               return `${cat.name}: ${fmt(cat.qty)} total (${cat.perStack}/stack)`;
             }
@@ -1043,13 +1088,13 @@ function GuideContent({ sortedMining, orderedExtr, catalystExtrSteps, refiningSt
             const m = s.catalyst.match(/^(.+?)\s*\((\d+)\)$/);
             return m ? `${m[1]}: ${fmt(stacks*Number(m[2]))} (${m[2]}/stack)` : `Catalyst: ${s.catalyst}`;
           })();
+          const buffedNote = buffs && buffs.extractMult > 1 ? ` (×${buffs.extractMult.toFixed(2)} buffed)` : "";
           elements.push(React.createElement(StepCard,{key:s.from+"->"+s.to, color,
             title:`${s.from} → ${s.to}`,
             badge:fmt(s.needed)+" "+s.to, badgeClass:"badge-green"},
             React.createElement('div',{style:{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}},
               React.createElement('span',{style:{fontSize:11,color:"var(--text3)"}},
-                `${MACHINE_ICONS[s.machine]||"⚙"} ${s.machine} · ${catStr} · Yield: ${(s.ratio/100).toFixed(2)}%`
-                +(buffKey!=="none"?` (×${BUFF_MULTIPLIERS[buffKey]} buffed)`:"")),
+                `${MACHINE_ICONS[s.machine]||"⚙"} ${s.machine} · ${catStr} · Yield: ${(s.ratio/100).toFixed(2)}%${buffedNote}`),
               isPractical && React.createElement('span',{style:{
                 fontSize:10,padding:"1px 7px",borderRadius:10,
                 background:"#1a2e1f",border:"0.5px solid var(--green)",
@@ -1109,9 +1154,10 @@ function ResultHero({ target, targetQty, byproducts }) {
 }
 
 // ── Main merged tab ───────────────────────────────────────────────────────────
-function RefiningExtractionTab({ buffKey }) {
-  const mult = BUFF_MULTIPLIERS[buffKey];
-  const allowDangerous  = useContext(DangerContext);
+function RefiningExtractionTab({ activeBuffs }) {
+  const buffs = computeBuffMults(activeBuffs);
+  const mult = buffs.extractMult;
+  const machineSettings = useContext(DangerContext);
   const allowKimurite   = useContext(KimuriteContext);
 
   const [target,    setTarget]    = useState("Steel");
@@ -1127,7 +1173,7 @@ function RefiningExtractionTab({ buffKey }) {
     const qty = parseFloat(amount.replace(/,/g,""));
     if (!qty || qty <= 0) return;
     calculate();
-  }, [allowDangerous, allowKimurite, buffKey, ownedMaterials]);
+  }, [machineSettings, allowKimurite, activeBuffs, ownedMaterials]);
 
   // ALL possible targets: alloys first, then pure extraction targets
   const alloyTargets = Object.keys(REFINING_RECIPES);
@@ -1142,7 +1188,7 @@ function RefiningExtractionTab({ buffKey }) {
 
     if (isAlloy) {
       // Alloy mode: single deterministic guide from reverse-search
-      const guide = computeReverseResult(target, qty, allowDangerous, allowKimurite, mult, buffKey, new Set(ownedMaterials));
+      const guide = computeReverseResult(target, qty, machineSettings, allowKimurite, buffs, new Set(ownedMaterials));
       // Byproducts = everything produced during extraction that isn't an alloy ingredient
       // (just collect from extraction steps)
       const bp = {};
@@ -1168,7 +1214,7 @@ function RefiningExtractionTab({ buffKey }) {
       setPathIdx(0);
     } else {
       // Extraction path mode: find all paths from every starting ore to target
-      const graph = buildForwardGraph(allowDangerous, allowKimurite);
+      const graph = buildForwardGraph(machineSettings, allowKimurite);
       let allPaths = [];
       Object.keys(RECIPES).forEach(ore => {
         const ps = findAllPaths(ore, target, graph);
@@ -1310,7 +1356,7 @@ function RefiningExtractionTab({ buffKey }) {
     // Alloy result
     result && result.mode === "alloy" && React.createElement('div', null,
       React.createElement(ResultHero, { target:result.target, targetQty:result.qty, byproducts:result.byproducts }),
-      React.createElement(GuideContent, { ...result.guide, buffKey, collectedNeeds: result.guide.collectedNeeds||{}, catalystExtrSteps: result.guide.catalystExtrSteps||[] })
+      React.createElement(GuideContent, { ...result.guide, buffs, collectedNeeds: result.guide.collectedNeeds||{}, catalystExtrSteps: result.guide.catalystExtrSteps||[] })
     ),
 
     // Extraction path result
@@ -1363,7 +1409,7 @@ function RefiningExtractionTab({ buffKey }) {
               const isOverall = result.scored[0] === p;
               const fromNodes = [p.ore, ...p.path.slice(0,-1).map(e=>e.to)];
               const hasPractical = !isOverall && p.path.some((edge, ei) =>
-                isStepPractical(fromNodes[ei], edge.to, edge.catalyst, allowDangerous)
+                isStepPractical(fromNodes[ei], edge.to, edge.catalyst, machineSettings)
               );
               const label = isOverall
                 ? `🏆 Optimal (${p.ore})`
@@ -1404,7 +1450,7 @@ function RefiningExtractionTab({ buffKey }) {
         // Fix from: each step's from is previous step's to
         for (let i=1; i<orderedExtr.length; i++) orderedExtr[i].from = orderedExtr[i-1].to;
 
-        return React.createElement(GuideContent, { sortedMining, orderedExtr, catalystExtrSteps:[], refiningSteps:[], hiddenWarnings:[], vendorNeeds:{}, collectedNeeds:{}, buffKey });
+        return React.createElement(GuideContent, { sortedMining, orderedExtr, catalystExtrSteps:[], refiningSteps:[], hiddenWarnings:[], vendorNeeds:{}, collectedNeeds:{}, buffs });
       })()
     )
   );
@@ -1415,17 +1461,17 @@ function RefiningExtractionTab({ buffKey }) {
 // ══════════════════════════════════════════════════════
 function App() {
   const [tab, setTab] = useState("refine");
-  const [buffKey, setBuffKey] = useState("none");
-  const [allowDangerous, setAllowDangerous] = useState(false);
+  const [activeBuffs, setActiveBuffs] = useState(new Set());
+  const [allowGreaterNat, setAllowGreaterNat] = useState(false);
+  const [allowBlastFurnace, setAllowBlastFurnace] = useState(false);
   const [allowKimurite, setAllowKimurite] = useState(false);
-  const mult = BUFF_MULTIPLIERS[buffKey];
+  const machineSettings = { allowGreaterNat, allowBlastFurnace };
 
   const TABS = [
     { key:"refine", label:"🔥 Refining / Extraction" },
   ];
 
-  return React.createElement(BuffContext.Provider,{value:mult},
-    React.createElement(DangerContext.Provider,{value:allowDangerous},
+  return React.createElement(DangerContext.Provider,{value:machineSettings},
     React.createElement(KimuriteContext.Provider,{value:allowKimurite},
       React.createElement('div',{style:{padding:"1rem 0",maxWidth:720,margin:"0 auto"}},
         React.createElement('h2',{style:{fontSize:18,fontWeight:500,marginBottom:4}},"Mortal Online 2 — Extraction Chain Calculator"),
@@ -1436,11 +1482,11 @@ function App() {
             onClick:()=>setTab(t.key)
           },t.label))
         ),
-        React.createElement(BuffBar,{buffKey,setBuffKey}),
-        React.createElement(DangerBar,{allowDangerous,setAllowDangerous,allowKimurite,setAllowKimurite}),
-        tab==="refine" && React.createElement(RefiningExtractionTab,{buffKey}),
+        React.createElement(BuffBar,{activeBuffs,setActiveBuffs}),
+        React.createElement(DangerBar,{allowGreaterNat,setAllowGreaterNat,allowBlastFurnace,setAllowBlastFurnace,allowKimurite,setAllowKimurite}),
+        tab==="refine" && React.createElement(RefiningExtractionTab,{activeBuffs}),
       )
-    ))
+    )
   );
 }
 
